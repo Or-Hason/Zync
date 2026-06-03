@@ -17,6 +17,9 @@ dist
 dist-ssr
 server/dist
 
+# Rust / Tauri
+client/src-tauri/target/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

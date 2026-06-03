@@ -1,0 +1,38 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 32px 40px;
+  overflow-y: auto;
+  gap: 24px;
+}
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pageTitle {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--color-text);
+}
+
+.pageSubtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 200px;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-dim);
+  font-size: 13px;
+}
