@@ -12,6 +12,12 @@ dependencies = [
     "pydantic-settings==2.6.1",
     "python-dotenv==1.0.1",
     "python-json-logger==3.2.1",
+    "httpx==0.28.1",
+    "aiofiles==24.1.0",
+    "pdfminer.six==20240706",
+    "python-docx==1.1.2",
+    "python-magic==0.4.27; sys_platform != 'win32'",
+    "python-magic-bin==0.4.14; sys_platform == 'win32'",
 ]
 
 [project.optional-dependencies]
@@ -23,6 +29,7 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 
 [tool.ruff.lint]
