@@ -17,8 +17,8 @@ Stop sending generic CVs into the void. Zync scans multiple job platforms, evalu
 ## 📂 Project Structure
 ```text
 Zync/
-├── backend/           # Python FastAPI, Scrapers, and AI logic
-├── frontend/          # React App and Tauri configuration
+├── server/            # Python FastAPI, Scrapers, and AI logic
+├── client/            # React App and Tauri configuration
 ├── DESIGN.md          # Core architecture and Database schemas
 ├── docker-compose.yml # PostgreSQL infrastructure
 └── README.md
@@ -40,10 +40,10 @@ docker compose up -d
 ```
 *Note: Connect to `localhost:5432` using your preferred DB client (e.g., DBeaver, VSCode extension).*
 
-### Step 2: Setup the Backend
+### Step 2: Setup the Server
 *(Coming soon: FastAPI setup instructions)*
 
-### Step 3: Setup the Frontend
+### Step 3: Setup the Client
 *(Coming soon: React/Tauri setup instructions)*
 
 ## 🛡️ Privacy First

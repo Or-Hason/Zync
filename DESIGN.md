@@ -6,7 +6,7 @@ Zync is an automated, AI-driven job hunting and application management system. I
 ## 2. ARCHITECTURE DIAGRAM
 The system follows a modern desktop-web architecture:
 - **Presentation Layer (Tauri + React):** A lightweight desktop application. React (TypeScript, Vite) handles the UI/UX, while Tauri (Rust) provides the native OS shell.
-- **Backend Layer (FastAPI):** A Python 3.12+ async server. Handles scraping logic, business rules, and API endpoints for the frontend.
+- **Server Layer (FastAPI):** A Python 3.12+ async server. Handles scraping logic, business rules, and API endpoints for the client.
 - **AI Processing Layer:**
   - `Ollama (llama3:8b)`: Local inference for lightweight tasks (data extraction, sanitization, simple parsing) to save costs.
   - `Gemini 1.5 Pro (API)`: Cloud inference for complex reasoning (Match Scoring, CV tailoring, Cover Letter generation).
@@ -14,12 +14,12 @@ The system follows a modern desktop-web architecture:
 
 ## 3. CORE WORKFLOWS
 ### 3.1. Job Discovery (The Trigger)
-1. **Manual Entry:** User pastes a URL. Backend validates and extracts raw HTML.
-2. **Auto-Scraping:** Backend runs scheduled jobs to scrape predefined sources (LinkedIn, Glassdoor, etc.).
+1. **Manual Entry:** User pastes a URL. Server validates and extracts raw HTML.
+2. **Auto-Scraping:** Server runs scheduled jobs to scrape predefined sources (LinkedIn, Glassdoor, etc.).
 3. **Parsing:** HTML is passed to Ollama/Gemini to extract structured fields (Company, Title, Requirements).
 
 ### 3.2. Evaluation (The Brain)
-1. Backend retrieves the user's active Resume (`raw_text` and `structured_data`).
+1. Server retrieves the user's active Resume (`raw_text` and `structured_data`).
 2. Gemini evaluates the Job Requirements against the Resume.
 3. Generates a `match_score` (0-100) and rationale.
 4. Identifies potential duplicates using embeddings or text-similarity against existing DB entries.

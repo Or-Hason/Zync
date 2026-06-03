@@ -1,0 +1,29 @@
+[project]
+name = "zync-server"
+version = "0.1.0"
+description = "Zync backend API — async FastAPI + PostgreSQL"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]==0.115.6",
+    "uvicorn[standard]==0.32.1",
+    "sqlalchemy[asyncio]==2.0.50",
+    "asyncpg==0.31.0",
+    "alembic==1.14.0",
+    "pydantic-settings==2.6.1",
+    "python-dotenv==1.0.1",
+    "python-json-logger==3.2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==8.3.4",
+    "pytest-asyncio==0.24.0",
+    "httpx==0.28.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
