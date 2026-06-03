@@ -85,6 +85,9 @@ export function useUpdateResume(): ReturnType<
   const qc = useQueryClient();
   return useMutation<ResumeRead, Error, { id: string; payload: ResumeUpdate }>({
     mutationFn: ({ id, payload }) => updateResume(id, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: RESUME_KEYS.list }),
+    onSuccess: (updated) => {
+      qc.setQueryData(RESUME_KEYS.detail(updated.id), updated);
+      qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
+    },
   });
 }

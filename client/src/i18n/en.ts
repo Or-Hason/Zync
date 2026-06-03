@@ -74,6 +74,8 @@ export const en = {
       },
       addEntry: "Add entry",
       removeEntry: "Remove entry",
+      uploadNew: "Upload New Resume",
+      unsavedChanges: "You have unsaved changes. Leave without saving?",
       saveSuccess: "Resume saved successfully.",
       saveError: "Failed to save resume. Please try again.",
       errorBoundaryTitle: "Failed to display resume data.",

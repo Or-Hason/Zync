@@ -32,6 +32,23 @@
   flex-wrap: wrap;
 }
 
+.uploadNewBtn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.uploadNewBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .parsingState {
   display: flex;
   flex-direction: column;

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { en } from "@/i18n/en";
 import styles from "./UploadZone.module.css";
 
@@ -45,6 +45,50 @@ export function UploadZone({ onFile }: UploadZoneProps): React.JSX.Element {
     if (file) handleFile(file);
     e.target.value = "";
   }
+
+  // Stable ref so the Tauri listener always calls the latest handleFile
+  const handleFileRef = useRef(handleFile);
+  useEffect(() => { handleFileRef.current = handleFile; });
+
+  // Tauri WebView2 suppresses browser drop events — use the native Tauri API instead.
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let unlisten: (() => void) | undefined;
+    let mounted = true;
+
+    void (async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const { invoke } = await import("@tauri-apps/api/core");
+
+      const unl = await getCurrentWindow().onDragDropEvent(async (event) => {
+        const p = event.payload as { type: string; paths?: string[] };
+        if (p.type === "hover") { setDragging(true); return; }
+        if (p.type === "leave" || p.type !== "drop") { setDragging(false); return; }
+        setDragging(false);
+        const path = (p.paths ?? [])[0];
+        if (!path) return;
+
+        const fileName = path.replace(/\\/g, "/").split("/").pop() ?? "resume";
+        const ext = fileName.split(".").pop()?.toLowerCase();
+        const mime =
+          ext === "pdf"
+            ? "application/pdf"
+            : ext === "docx"
+              ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              : "";
+        try {
+          const bytes: number[] = await invoke<number[]>("read_file_bytes", { path });
+          handleFileRef.current(new File([new Uint8Array(bytes)], fileName, { type: mime }));
+        } catch (err) {
+          console.error("Tauri read_file_bytes failed:", err);
+        }
+      });
+
+      if (mounted) { unlisten = unl; } else { unl(); }
+    })();
+
+    return () => { mounted = false; unlisten?.(); };
+  }, []);
 
   return (
     <div

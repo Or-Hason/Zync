@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useBlocker } from "react-router-dom";
 import { en } from "@/i18n/en";
 import { useResumes, useResume, useUploadResume } from "@/api/resumeApi";
 import { UploadZone } from "@/components/resume/UploadZone";
@@ -19,6 +20,37 @@ export function ResumeManagerPage(): React.JSX.Element {
   // activeId drives what is shown in the editor — set after upload or dropdown select.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Block React Router tab navigation when the editor has unsaved changes.
+  const blocker = useBlocker(isDirty);
+  useEffect(() => {
+    if (blocker.state !== "blocked") return;
+    const ok = window.confirm(rm.unsavedChanges);
+    if (ok) { setIsDirty(false); blocker.proceed(); }
+    else { blocker.reset(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocker.state]);
+
+  // Block browser refresh / window close when dirty.
+  useEffect(() => {
+    if (!isDirty) return;
+    function handle(e: BeforeUnloadEvent): void { e.preventDefault(); }
+    window.addEventListener("beforeunload", handle);
+    return () => window.removeEventListener("beforeunload", handle);
+  }, [isDirty]);
+
+  function handleUploadNew(): void {
+    if (isDirty && !window.confirm(rm.unsavedChanges)) return;
+    setIsDirty(false);
+    setActiveId(null);
+  }
+
+  function handleSelectResume(id: string): void {
+    if (isDirty && !window.confirm(rm.unsavedChanges)) return;
+    setIsDirty(false);
+    setActiveId(id);
+  }
 
   // Fetch the full resume (with structured_data) whenever activeId changes.
   // The upload mutation primes the cache so freshly-uploaded resumes load instantly.
@@ -83,13 +115,21 @@ export function ResumeManagerPage(): React.JSX.Element {
             <ResumeList
               resumes={resumeList}
               selectedId={activeId}
-              onSelect={setActiveId}
+              onSelect={handleSelectResume}
             />
+            <button
+              className={styles.uploadNewBtn}
+              onClick={handleUploadNew}
+              aria-label={rm.uploadNew}
+            >
+              {rm.uploadNew}
+            </button>
           </div>
           <ResumeEditor
             resume={activeResume}
             onSaveSuccess={(): void => showToast(rm.saveSuccess, "success")}
             onSaveError={(): void => showToast(rm.saveError, "error")}
+            onDirtyChange={setIsDirty}
           />
         </>
       )}
@@ -102,7 +142,7 @@ export function ResumeManagerPage(): React.JSX.Element {
               <ResumeList
                 resumes={resumeList}
                 selectedId={null}
-                onSelect={setActiveId}
+                onSelect={handleSelectResume}
               />
             </div>
           )}
