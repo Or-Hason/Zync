@@ -28,9 +28,12 @@ export function ResumeList({ resumes, selectedId, onSelect }: ResumeListProps): 
         id="resume-select"
         className={styles.select}
         value={selectedId ?? ""}
-        onChange={(e): void => onSelect(e.target.value)}
+        onChange={(e): void => { if (e.target.value) onSelect(e.target.value); }}
         aria-label={en.pages.resumeManager.selectResume}
       >
+        <option value="" disabled>
+          — {en.pages.resumeManager.selectResume} —
+        </option>
         {resumes.map((r) => (
           <option key={r.id} value={r.id}>
             {r.version_name}

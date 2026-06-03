@@ -21,6 +21,12 @@ async function uploadResume(file: File, versionName?: string): Promise<ResumeRea
   return res.json() as Promise<ResumeRead>;
 }
 
+async function fetchResume(id: string): Promise<ResumeRead> {
+  const res = await fetch(`${BASE}/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch resume");
+  return res.json() as Promise<ResumeRead>;
+}
+
 async function updateResume(id: string, payload: ResumeUpdate): Promise<ResumeRead> {
   const res = await fetch(`${BASE}/${id}`, {
     method: "PUT",
@@ -34,6 +40,7 @@ async function updateResume(id: string, payload: ResumeUpdate): Promise<ResumeRe
 /** React Query key constants. */
 export const RESUME_KEYS = {
   list: ["resumes"] as const,
+  detail: (id: string) => ["resumes", id] as const,
 };
 
 /** Fetch all resumes, newest first. */
@@ -44,14 +51,30 @@ export function useResumes(): ReturnType<typeof useQuery<ResumeListItem[]>> {
   });
 }
 
-/** Upload a new resume file. Invalidates the list on success. */
+/**
+ * Fetch a single resume by ID (includes structured_data).
+ * Skips the query when id is null.
+ */
+export function useResume(id: string | null): ReturnType<typeof useQuery<ResumeRead>> {
+  return useQuery<ResumeRead>({
+    queryKey: RESUME_KEYS.detail(id ?? ""),
+    queryFn: () => fetchResume(id!),
+    enabled: id !== null,
+  });
+}
+
+/** Upload a new resume file. Primes the detail cache and invalidates the list. */
 export function useUploadResume(): ReturnType<
   typeof useMutation<ResumeRead, Error & { status?: number }, { file: File; versionName?: string }>
 > {
   const qc = useQueryClient();
   return useMutation<ResumeRead, Error & { status?: number }, { file: File; versionName?: string }>({
     mutationFn: ({ file, versionName }) => uploadResume(file, versionName),
-    onSuccess: () => qc.invalidateQueries({ queryKey: RESUME_KEYS.list }),
+    onSuccess: (resume) => {
+      // Prime the detail cache so selecting the just-uploaded resume is instant.
+      qc.setQueryData(RESUME_KEYS.detail(resume.id), resume);
+      qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
+    },
   });
 }
 

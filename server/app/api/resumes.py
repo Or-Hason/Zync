@@ -190,6 +190,35 @@ async def list_resumes(
     return [ResumeListItem.model_validate(row) for row in rows]
 
 
+@router.get(
+    "/{resume_id}",
+    response_model=ResumeRead,
+    summary="Fetch a single resume by ID",
+)
+async def get_resume(
+    resume_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> ResumeRead:
+    """Return the full resume record including structured_data.
+
+    Args:
+        resume_id: Target resume primary key.
+        db: Injected async DB session.
+
+    Returns:
+        Full ResumeRead record.
+
+    Raises:
+        HTTPException: 404 if no resume matches ``resume_id``.
+    """
+    resume = await db.get(Resume, resume_id)
+    if resume is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found."
+        )
+    return ResumeRead.model_validate(resume)
+
+
 @router.put(
     "/{resume_id}",
     response_model=ResumeRead,
