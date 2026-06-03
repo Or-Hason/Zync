@@ -1,4 +1,6 @@
 import logging
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +14,18 @@ setup_logging(settings.log_level)
 
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Manage application startup and shutdown lifecycle."""
+    logger.info(
+        "Zync API starting",
+        extra={"env": settings.app_env, "db": settings.database_url_masked},
+    )
+    yield
+    logger.info("Zync API shutting down")
+
+
 app = FastAPI(
     title="Zync API",
     version="0.1.0",
@@ -19,6 +33,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -30,16 +45,3 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
-
-
-@app.on_event("startup")
-async def on_startup() -> None:
-    logger.info(
-        "Zync API starting",
-        extra={"env": settings.app_env, "db": settings.database_url_masked},
-    )
-
-
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    logger.info("Zync API shutting down")
