@@ -1,0 +1,16 @@
+fastapi[standard]==0.115.6
+uvicorn[standard]==0.32.1
+sqlalchemy[asyncio]==2.0.50
+asyncpg==0.31.0
+alembic==1.14.0
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+python-json-logger==3.2.1
+httpx==0.28.1
+aiofiles==24.1.0
+pdfminer.six==20240706
+python-docx==1.1.2
+# libmagic bindings for byte-level MIME sniffing. python-magic needs a system
+# libmagic (Linux/macOS); on Windows the DLLs are bundled by python-magic-bin.
+python-magic==0.4.27; sys_platform != "win32"
+python-magic-bin==0.4.14; sys_platform == "win32"
