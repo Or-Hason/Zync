@@ -5,7 +5,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, CheckConstraint, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+)
 from sqlalchemy.dialects.postgresql import JSONB, TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
@@ -54,6 +61,15 @@ class Job(Base):
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     search_filters: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     match_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Set after a successful Gemini score (or cache hit) to record which resume
+    # was active at scoring time; nulled if that resume is later deleted.
+    scored_by_resume_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("resumes.id", ondelete="SET NULL", name="fk_jobs_scored_by_resume"),
+        nullable=True,
+    )
+    # Non-score Gemini output kept as flexible JSONB so the cache can replay it:
+    # { "rationale": str, "matched_skills": [...], "missing_skills": [...] }.
+    score_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,

@@ -152,6 +152,16 @@ class ResumeListItem(BaseModel):
     created_at: datetime
 
 
+class ActiveResumeResponse(BaseModel):
+    """The currently active resume, as needed by the scoring pipeline / UI."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    version_name: str
+    structured_data: ResumeStructuredData | None
+
+
 class ResumeUpdate(BaseModel):
     """Partial update payload for ``PUT /api/resumes/{id}``."""
 

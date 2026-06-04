@@ -169,3 +169,44 @@ class TestUpdateResume:
             json={"version_name": "x"},
         )
         assert response.status_code == 404
+
+
+class TestActiveResume:
+    """GET /api/resumes/active and PUT /api/resumes/{id}/set-active."""
+
+    def test_get_active_returns_record(
+        self, client: TestClient, fake_session: FakeSession
+    ) -> None:
+        active = _make_resume("Active CV", "Backend")
+        active.is_active = True
+        fake_session.rows = [active]
+
+        response = client.get("/api/resumes/active")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["version_name"] == "Active CV"
+        assert "structured_data" in body
+
+    def test_get_active_returns_404_when_none(self, client: TestClient) -> None:
+        response = client.get("/api/resumes/active")
+        assert response.status_code == 404
+
+    def test_set_active_marks_target_and_clears_others(
+        self, client: TestClient, fake_session: FakeSession
+    ) -> None:
+        previous = _make_resume("Old Active")
+        previous.is_active = True
+        target = _make_resume("New Active")
+        target.is_active = False
+        fake_session.get_map[target.id] = target
+        # The set-active query returns the currently-active resumes.
+        fake_session.rows = [previous]
+
+        response = client.put(f"/api/resumes/{target.id}/set-active")
+        assert response.status_code == 200
+        assert target.is_active is True
+        assert previous.is_active is False
+
+    def test_set_active_missing_resume_returns_404(self, client: TestClient) -> None:
+        response = client.put(f"/api/resumes/{uuid4()}/set-active")
+        assert response.status_code == 404

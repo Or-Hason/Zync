@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.schemas.job import ParsedJob
 from app.schemas.resume import build_structured_data_skeleton
 from app.schemas.skeleton import build_model_skeleton
+from app.services.json_extraction import extract_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -129,39 +130,9 @@ def _build_job_user_prompt(raw_text: str) -> str:
     )
 
 
-def _extract_json_object(content: str) -> dict[str, Any]:
-    """Best-effort parse of a JSON object from raw model output.
-
-    Tolerates stray markdown fences or surrounding prose by isolating the
-    outermost ``{...}`` span. Never raises: an unparyseable response yields an
-    empty dict so downstream sanitisation falls back to defaults.
-
-    Args:
-        content: Raw text returned by the model.
-
-    Returns:
-        The parsed JSON object, or ``{}`` if none could be recovered.
-    """
-    if not content:
-        return {}
-
-    try:
-        parsed = json.loads(content)
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        pass
-
-    start = content.find("{")
-    end = content.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return {}
-
-    try:
-        parsed = json.loads(content[start : end + 1])
-        return parsed if isinstance(parsed, dict) else {}
-    except json.JSONDecodeError:
-        logger.warning("Ollama response was not valid JSON; using empty fallback")
-        return {}
+# Re-exported under the historical private name so existing call sites and
+# tests keep working; the implementation now lives in the shared module.
+_extract_json_object = extract_json_object
 
 
 class OllamaClient:

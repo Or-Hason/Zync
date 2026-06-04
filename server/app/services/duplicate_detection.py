@@ -14,8 +14,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from app.services.text_similarity import best_match, comparison_string
+
+# Re-exported under the historical private name so BE-03 tests keep working.
+_comparison_string = comparison_string
 
 # Cosine similarity strictly above this is considered a strong content match.
 SIMILARITY_THRESHOLD = 0.75
@@ -41,19 +43,6 @@ class DuplicateAssessment:
 
     is_duplicate: bool
     duplicate_chance: int
-
-
-def _comparison_string(title: str | None, description: str | None) -> str:
-    """Concatenate title and description into one TF-IDF comparison string.
-
-    Args:
-        title: Job title (may be ``None``).
-        description: Job description (may be ``None``).
-
-    Returns:
-        The trimmed ``"title description"`` string.
-    """
-    return f"{(title or '').strip()} {(description or '').strip()}".strip()
 
 
 def _is_recent(created_at: datetime | None, now: datetime) -> bool:
@@ -94,9 +83,9 @@ def detect_duplicate(
     """
     now = now or datetime.now(timezone.utc)
 
-    candidate = _comparison_string(new_title, new_description)
+    candidate = comparison_string(new_title, new_description)
     corpus = [
-        (_comparison_string(job.job_title, job.job_description), job.created_at)
+        (comparison_string(job.job_title, job.job_description), job.created_at)
         for job in existing
     ]
     corpus = [(text, created_at) for text, created_at in corpus if text]
@@ -104,22 +93,12 @@ def detect_duplicate(
     if not candidate or not corpus:
         return DuplicateAssessment(is_duplicate=False, duplicate_chance=0)
 
-    documents = [candidate] + [text for text, _ in corpus]
-    try:
-        matrix = TfidfVectorizer().fit_transform(documents)
-    except ValueError:
-        # Empty vocabulary (e.g. only stop-words) -> treat as unique.
+    match = best_match(candidate, [text for text, _ in corpus])
+    if match is None or match.score <= SIMILARITY_THRESHOLD:
         return DuplicateAssessment(is_duplicate=False, duplicate_chance=0)
 
-    similarities = cosine_similarity(matrix[0:1], matrix[1:]).ravel()
-    best_index = int(similarities.argmax())
-    best_score = float(similarities[best_index])
-    best_created_at = corpus[best_index][1]
-
-    if best_score <= SIMILARITY_THRESHOLD:
-        return DuplicateAssessment(is_duplicate=False, duplicate_chance=0)
-
-    chance = round(best_score * 100)
+    best_created_at = corpus[match.index][1]
+    chance = round(match.score * 100)
     if _is_recent(best_created_at, now):
         return DuplicateAssessment(
             is_duplicate=True,

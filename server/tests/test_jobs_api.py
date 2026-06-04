@@ -1,33 +1,28 @@
-"""Endpoint tests for POST /api/jobs/scrape with mocked boundaries."""
+"""Endpoint tests for POST /api/jobs/scrape — extraction, validation, duplicates.
+
+The BE-04 pipeline always scores, so these tests supply an active resume and a
+stubbed Gemini client; the BE-04-specific behaviours (blacklist, caching,
+auto-reject, advice) live in test_jobs_pipeline.py.
+"""
 
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import Iterator
 from datetime import datetime, timezone
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.session import get_db
-from app.main import app
-from app.models.job import Job
-from app.services.ollama_client import get_ollama_client
-
-_SAMPLE_JOB_RAW: dict[str, Any] = {
-    "company_name": "Acme Corp",
-    "job_title": "Senior Python Engineer",
-    "company_description": "We ship logistics software.",
-    "job_description": "Own the async FastAPI platform and PostgreSQL layer.",
-    "requirements": {
-        "skills": ["Python", "FastAPI"],
-        "years_of_experience": 5,
-        "education": "B.Sc.",
-        "other": [],
-    },
-    "published_at": "2026-05-01",
-}
+from tests._job_pipeline import (
+    FakeBlacklistStore,
+    FakeGemini,
+    FakeJobOllama,
+    FakeJobSession,
+    make_active_resume,
+    make_score_result,
+    pipeline_client,
+)
 
 _MAIN_HTML = (
     "<html><body><nav>menu</nav>"
@@ -37,95 +32,29 @@ _MAIN_HTML = (
 )
 
 
-class _Row:
-    """Column-projection row stand-in for the duplicate-scan query."""
-
-    def __init__(self, title: str, description: str, created_at: datetime) -> None:
-        self.job_title = title
-        self.job_description = description
-        self.created_at = created_at
-
-
-class _Result:
-    def __init__(self, rows: list[_Row]) -> None:
-        self._rows = rows
-
-    def all(self) -> list[_Row]:
-        return list(self._rows)
-
-
-class FakeJobSession:
-    """In-memory async session double for the jobs endpoint."""
-
-    def __init__(self) -> None:
-        self.added: list[Job] = []
-        self.existing_rows: list[_Row] = []
-
-    def add(self, obj: Job) -> None:
-        self.added.append(obj)
-
-    async def flush(self) -> None:
-        for obj in self.added:
-            _ensure_created_at(obj)
-
-    async def refresh(self, obj: Job) -> None:
-        _ensure_created_at(obj)
-
-    async def execute(self, _stmt: Any) -> _Result:
-        return _Result(self.existing_rows)
-
-    async def commit(self) -> None:
-        return None
-
-    async def rollback(self) -> None:
-        return None
-
-
-def _ensure_created_at(obj: Job) -> None:
-    if getattr(obj, "created_at", None) is None:
-        obj.created_at = datetime.now(timezone.utc)
-
-
-class FakeJobOllama:
-    """Stub Ollama client returning a preset job payload and recording input."""
-
-    def __init__(self) -> None:
-        self.payload: dict[str, Any] = dict(_SAMPLE_JOB_RAW)
-        self.calls: list[str] = []
-
-    async def parse_job(self, raw_text: str) -> dict[str, Any]:
-        self.calls.append(raw_text)
-        return self.payload
+@pytest.fixture
+def session() -> FakeJobSession:
+    fake = FakeJobSession()
+    fake.active_resumes = [make_active_resume()]
+    return fake
 
 
 @pytest.fixture
-def fake_session() -> FakeJobSession:
-    return FakeJobSession()
-
-
-@pytest.fixture
-def fake_ollama() -> FakeJobOllama:
+def ollama() -> FakeJobOllama:
     return FakeJobOllama()
 
 
 @pytest.fixture
+def gemini() -> FakeGemini:
+    return FakeGemini(result=make_score_result(78))
+
+
+@pytest.fixture
 def client(
-    fake_session: FakeJobSession,
-    fake_ollama: FakeJobOllama,
-    monkeypatch: pytest.MonkeyPatch,
+    session: FakeJobSession, ollama: FakeJobOllama, gemini: FakeGemini
 ) -> Iterator[TestClient]:
-    """Yield a TestClient with DB and Ollama mocked; fetch is patched per-test."""
-
-    async def _override_get_db() -> AsyncIterator[FakeJobSession]:
-        yield fake_session
-
-    app.dependency_overrides[get_db] = _override_get_db
-    app.dependency_overrides[get_ollama_client] = lambda: fake_ollama
-
-    with TestClient(app) as test_client:
+    with pipeline_client(session, ollama, gemini, FakeBlacklistStore()) as test_client:
         yield test_client
-
-    app.dependency_overrides.clear()
 
 
 def _patch_fetch(monkeypatch: pytest.MonkeyPatch, html: str) -> None:
@@ -139,10 +68,7 @@ class TestScrapeFromUrl:
     """POST /api/jobs/scrape with a URL."""
 
     def test_valid_url_returns_201_structured(
-        self,
-        client: TestClient,
-        fake_ollama: FakeJobOllama,
-        monkeypatch: pytest.MonkeyPatch,
+        self, client: TestClient, ollama: FakeJobOllama, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_fetch(monkeypatch, _MAIN_HTML)
         response = client.post(
@@ -155,12 +81,11 @@ class TestScrapeFromUrl:
         assert body["job_title"] == "Senior Python Engineer"
         assert body["requirements"]["skills"] == ["Python", "FastAPI"]
         assert body["source_type"] == "manual"
-        assert body["status"] == "not_applied"
         assert body["source_url"] == "https://jobs.example.com/123"
         # Ollama received the smart-extracted main content, not sidebar/nav.
-        assert fake_ollama.calls
-        assert "Senior Python Engineer" in fake_ollama.calls[0]
-        assert "menu" not in fake_ollama.calls[0]
+        assert ollama.calls
+        assert "Senior Python Engineer" in ollama.calls[0]
+        assert "menu" not in ollama.calls[0]
 
     def test_oversized_url_content_rejected_422(
         self, client: TestClient, monkeypatch: pytest.MonkeyPatch
@@ -177,7 +102,7 @@ class TestScrapeFromRawText:
     """POST /api/jobs/scrape with raw_text."""
 
     def test_raw_text_bypasses_scraping_201(
-        self, client: TestClient, fake_ollama: FakeJobOllama
+        self, client: TestClient, ollama: FakeJobOllama
     ) -> None:
         response = client.post(
             "/api/jobs/scrape",
@@ -187,7 +112,7 @@ class TestScrapeFromRawText:
         body = response.json()
         assert body["source_type"] == "manual"
         assert body["source_url"] is None
-        assert fake_ollama.calls[0].startswith("Senior Python Engineer at Acme")
+        assert ollama.calls[0].startswith("Senior Python Engineer at Acme")
 
 
 class TestValidation:
@@ -206,10 +131,12 @@ class TestDuplicateDetection:
     """Endpoint wires duplicate detection into the persisted record."""
 
     def test_recent_similar_job_flags_duplicate(
-        self, client: TestClient, fake_session: FakeJobSession
+        self, client: TestClient, session: FakeJobSession
     ) -> None:
-        fake_session.existing_rows = [
-            _Row(
+        from tests._job_pipeline import ExistingRow
+
+        session.existing_rows = [
+            ExistingRow(
                 "Senior Python Engineer",
                 "Own the async FastAPI platform and PostgreSQL layer.",
                 datetime.now(timezone.utc),
@@ -225,9 +152,9 @@ class TestDuplicateDetection:
         assert body["duplicate_chance"] >= 85
 
     def test_unique_job_not_flagged(
-        self, client: TestClient, fake_session: FakeJobSession
+        self, client: TestClient, session: FakeJobSession
     ) -> None:
-        fake_session.existing_rows = []
+        session.existing_rows = []
         response = client.post(
             "/api/jobs/scrape", json={"raw_text": "a fresh unique job posting"}
         )

@@ -91,5 +91,32 @@ class JobRead(BaseModel):
     status: str
     is_duplicate: bool
     duplicate_chance: int | None
+    scored_by_resume_id: UUID | None
     published_at: datetime | None
     created_at: datetime
+
+
+class ScoreResult(BaseModel):
+    """Validated match-scoring output from Gemini (or a cache hit)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    match_score: int
+    rationale: str | None = None
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+
+
+class JobScrapeResponse(JobRead):
+    """Full scrape + score payload returned on a successful pipeline run.
+
+    Extends :class:`JobRead` with the scoring fields the frontend needs to
+    render the Job Card — present even for auto-rejected jobs so the card can
+    still show the score and rationale.
+    """
+
+    rationale: str | None = None
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+    system_advice: str | None = None
+    score_cached: bool = False
