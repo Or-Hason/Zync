@@ -9,7 +9,7 @@ The system follows a modern desktop-web architecture:
 - **Server Layer (FastAPI):** A Python 3.12+ async server. Handles scraping logic, business rules, and API endpoints for the client.
 - **AI Processing Layer:**
   - `Ollama (llama3:8b)`: Local inference for lightweight tasks (data extraction, sanitization, simple parsing) to save costs.
-  - `Gemini 1.5 Pro (API)`: Cloud inference for complex reasoning (Match Scoring, CV tailoring, Cover Letter generation).
+  - `Gemini 3.5 Flash (API)`: Cloud inference for complex reasoning (Match Scoring, CV tailoring, Cover Letter generation).
 - **Data Layer (PostgreSQL):** Stores jobs, resumes, and user settings. Uses `asyncpg` driven by `SQLAlchemy` (ORM) for async DB operations. Heavily utilizes `JSONB` for unstructured metadata.
 
 ## 3. CORE WORKFLOWS

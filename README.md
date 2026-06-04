@@ -11,7 +11,7 @@ Stop sending generic CVs into the void. Zync scans multiple job platforms, evalu
 - **Database:** PostgreSQL 18 + `asyncpg` + SQLAlchemy (Heavily utilizing `JSONB` for unstructured data).
 - **AI Inference Engine:**
   - **Local:** `Ollama` (`llama3:8b`) for cost-free data parsing and sanitization.
-  - **Cloud:** `Gemini 1.5 Pro` API for deep reasoning, match scoring, and CV rewriting.
+  - **Cloud:** `Gemini 3.5 Flash` API for deep reasoning, match scoring, and CV rewriting.
 - **Scraping:** BeautifulSoup4 & Playwright.
 
 ## 📂 Project Structure

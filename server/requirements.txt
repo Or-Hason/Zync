@@ -10,6 +10,8 @@ httpx==0.28.1
 aiofiles==24.1.0
 pdfminer.six==20240706
 python-docx==1.1.2
+beautifulsoup4==4.12.3
+scikit-learn==1.9.0
 # libmagic bindings for byte-level MIME sniffing. python-magic needs a system
 # libmagic (Linux/macOS); on Windows the DLLs are bundled by python-magic-bin.
 python-magic==0.4.27; sys_platform != "win32"

@@ -38,7 +38,7 @@ client/src-tauri/target/
 
 # Agents
 .agents/*
-.claude/settings.local.json
+.claude/*
 CLAUDE.md
 
 # Python

@@ -8,12 +8,13 @@ field set is never duplicated by hand.
 
 from __future__ import annotations
 
-import types
 from datetime import datetime
-from typing import Any, Union, get_args, get_origin
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.skeleton import build_model_skeleton
 
 
 def _clean_str_list(value: Any) -> Any:
@@ -163,37 +164,6 @@ class ResumeUpdate(BaseModel):
 # ── Prompt skeleton generation ───────────────────────────────────────────────
 
 
-def _annotation_skeleton(annotation: Any) -> Any:
-    """Build a JSON skeleton describing a single field annotation.
-
-    Args:
-        annotation: A type annotation from a Pydantic model field.
-
-    Returns:
-        A JSON-serialisable placeholder: ``"string"`` for scalars, a nested
-        dict for sub-models, or a single-element list for collections.
-    """
-    origin = get_origin(annotation)
-
-    # Optional[...] / Union[...] -> use the first non-None member.
-    if origin is Union or origin is types.UnionType:
-        members = [arg for arg in get_args(annotation) if arg is not type(None)]
-        return _annotation_skeleton(members[0]) if members else "string"
-
-    if origin in (list, set, tuple):
-        inner_args = get_args(annotation)
-        inner = _annotation_skeleton(inner_args[0]) if inner_args else "string"
-        return [inner]
-
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-        return {
-            name: _annotation_skeleton(field.annotation)
-            for name, field in annotation.model_fields.items()
-        }
-
-    return "string"
-
-
 def build_structured_data_skeleton() -> dict[str, Any]:
     """Return a JSON skeleton of :class:`ResumeStructuredData` for the AI prompt.
 
@@ -202,4 +172,4 @@ def build_structured_data_skeleton() -> dict[str, Any]:
         nested placeholders, generated from the model so keys are never
         hardcoded twice.
     """
-    return _annotation_skeleton(ResumeStructuredData)
+    return build_model_skeleton(ResumeStructuredData)
