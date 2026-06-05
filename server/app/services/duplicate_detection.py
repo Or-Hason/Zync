@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.services.text_similarity import best_match, comparison_string
 
-# Re-exported under the historical private name so BE-03 tests keep working.
+# Re-exported under the historical private name so previous tests keep working.
 _comparison_string = comparison_string
 
 # Cosine similarity strictly above this is considered a strong content match.

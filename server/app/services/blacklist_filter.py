@@ -1,6 +1,6 @@
 """Blacklist keyword scanning for the filtration step.
 
-Scope rule (BE-04): scan ONLY ``job_title + " " + job_description``. The
+Scope rule: scan ONLY ``job_title + " " + job_description``. The
 ``company_description`` is deliberately excluded to avoid false positives from
 company names and boilerplate marketing text.
 """

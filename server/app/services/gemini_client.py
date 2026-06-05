@@ -1,8 +1,6 @@
 """Gemini 3.5 Flash match-scoring engine.
 
-Uses the supported ``google-genai`` SDK. (BE-04 specified the older
-``google-generativeai`` package, but that has been deprecated and is no longer
-maintained, so the supported successor is used instead.)
+Uses the supported ``google-genai`` SDK.
 
 Privacy contract (CLAUDE.md): PII is stripped from the resume's structured data
 *before* the prompt is built, so identifying fields never leave the machine. The

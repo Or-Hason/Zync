@@ -1,4 +1,4 @@
-"""BE-04 pipeline tests: blacklist, no-active-resume guard, caching, scoring."""
+"""Pipeline tests: blacklist, no-active-resume guard, caching, scoring."""
 
 from __future__ import annotations
 

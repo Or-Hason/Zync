@@ -49,7 +49,7 @@ class JobScrapeRequest(BaseModel):
 
     Exactly one ingestion source is required: a ``url`` to fetch and scrape, or
     pre-extracted ``raw_text``. ``force_score`` is passed through to the
-    downstream scoring pipeline (BE-04) to bypass blacklist rejection.
+    downstream scoring pipeline to bypass blacklist rejection.
     """
 
     model_config = ConfigDict(extra="ignore")

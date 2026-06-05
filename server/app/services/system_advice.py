@@ -2,7 +2,7 @@
 
 The advice is a deterministic, rule-based recommendation — never a second AI
 call. ``is_duplicate`` and ``duplicate_chance`` already encode the 6-month
-recency decision from BE-03 duplicate detection: ``is_duplicate = true`` means a
+recency decision duplicate detection: ``is_duplicate = true`` means a
 recent (<6 month) near-identical job, while ``is_duplicate = false`` with a
 positive ``duplicate_chance`` means a similar job older than 6 months.
 """

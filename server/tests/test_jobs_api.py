@@ -1,7 +1,7 @@
 """Endpoint tests for POST /api/jobs/scrape — extraction, validation, duplicates.
 
-The BE-04 pipeline always scores, so these tests supply an active resume and a
-stubbed Gemini client; the BE-04-specific behaviours (blacklist, caching,
+The pipeline always scores, so these tests supply an active resume and a
+stubbed Gemini client; the pipeline-specific behaviours (blacklist, caching,
 auto-reject, advice) live in test_jobs_pipeline.py.
 """
 

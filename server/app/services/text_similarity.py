@@ -1,6 +1,6 @@
 """Shared TF-IDF cosine similarity over short text corpora.
 
-Both duplicate detection (BE-03) and score caching (BE-04) reduce a job to a
+Both duplicate detection and score caching reduce a job to a
 single ``job_title + " " + job_description`` string and find the most similar
 prior job. This module owns that comparison so the concatenation rule and the
 vectorisation live in exactly one place.

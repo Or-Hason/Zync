@@ -1,6 +1,6 @@
 """Job ingestion + scoring pipeline: scrape, filter, score, detect duplicates.
 
-Pipeline order: extract (BE-03) -> duplicate detection -> blacklist filter ->
+Pipeline order: extract -> duplicate detection -> blacklist filter ->
 active-resume guard -> score cache -> Gemini score -> auto-reject -> advice.
 
 PII / privacy rule (CLAUDE.md, DESIGN.md): logs reference only ``job_id`` and

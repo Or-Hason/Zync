@@ -1,4 +1,4 @@
-"""BE-04 scoring: settings table, active resume, score columns
+"""Scoring: settings table, active resume, score columns
 
 Adds:
 - ``settings`` singleton table (JSONB blob, CHECK id = 1).
