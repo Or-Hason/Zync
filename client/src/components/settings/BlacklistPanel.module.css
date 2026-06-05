@@ -1,0 +1,188 @@
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+
+.panelHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.panelSubtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ── Add row ──────────────────────────────────────────────────────────────── */
+
+.addBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.addRow {
+  display: flex;
+  gap: 10px;
+}
+
+.charCount {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  text-align: right;
+  padding-right: 2px;
+  transition: color var(--transition);
+}
+
+.charCountLimit {
+  color: var(--color-error);
+}
+
+.input {
+  flex: 1;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.input::placeholder {
+  color: var(--color-text-dim);
+}
+
+.input:focus {
+  border-color: var(--color-accent);
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.addButton {
+  height: 36px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 500;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  transition: background var(--transition), opacity var(--transition);
+}
+
+.addButton:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.addButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Chips ────────────────────────────────────────────────────────────────── */
+
+.chipsWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--color-accent-muted);
+  border: 1px solid var(--color-accent);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--color-accent-hover);
+}
+
+.chipLabel {
+  user-select: none;
+}
+
+.chipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  font-size: 14px;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: var(--color-accent-hover);
+  opacity: 0.7;
+  padding: 0;
+  transition: opacity var(--transition);
+}
+
+.chipRemove:hover {
+  opacity: 1;
+}
+
+/* ── States ───────────────────────────────────────────────────────────────── */
+
+.skeletonWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skeletonChip {
+  display: inline-block;
+  height: 28px;
+  width: 80px;
+  border-radius: 20px;
+  background: linear-gradient(
+    90deg,
+    var(--color-surface-2) 25%,
+    var(--color-border) 50%,
+    var(--color-surface-2) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.skeletonChip:nth-child(2) { width: 60px; }
+.skeletonChip:nth-child(3) { width: 100px; }
+.skeletonChip:nth-child(4) { width: 70px; }
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.emptyState {
+  font-size: 13px;
+  color: var(--color-text-dim);
+  padding: 4px 0;
+}
+
+.errorState {
+  font-size: 13px;
+  color: var(--color-error);
+  padding: 4px 0;
+}

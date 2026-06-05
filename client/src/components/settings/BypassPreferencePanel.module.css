@@ -1,0 +1,85 @@
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+
+.panelHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panelTitle {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.panelSubtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ── Segmented control ────────────────────────────────────────────────────── */
+
+.segmented {
+  display: inline-flex;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 2px;
+  align-self: flex-start;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--transition), background var(--transition);
+  user-select: none;
+}
+
+.segment:hover:not(.segmentDisabled) {
+  color: var(--color-text);
+}
+
+.segmentActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.segmentActive:hover {
+  background: var(--color-accent-hover);
+  color: #fff;
+}
+
+.segmentDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hiddenRadio {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.errorState {
+  font-size: 13px;
+  color: var(--color-error);
+}
