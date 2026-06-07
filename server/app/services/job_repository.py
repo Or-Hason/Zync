@@ -103,10 +103,12 @@ async def load_scored_jobs(db: AsyncSession, resume_id: UUID) -> list[ScoredJob]
         Scored jobs (``match_score`` present) as :class:`ScoredJob` projections.
     """
     stmt = select(
+        Job.id,
         Job.job_title,
         Job.job_description,
         Job.match_score,
         Job.score_details,
+        Job.raw_content,
     ).where(
         Job.scored_by_resume_id == resume_id,
         Job.match_score.isnot(None),
@@ -117,6 +119,8 @@ async def load_scored_jobs(db: AsyncSession, resume_id: UUID) -> list[ScoredJob]
             comparison_text=comparison_string(row.job_title, row.job_description),
             match_score=row.match_score,
             score_details=row.score_details,
+            job_id=row.id,
+            raw_content=row.raw_content,
         )
         for row in rows
     ]

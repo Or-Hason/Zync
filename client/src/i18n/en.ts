@@ -144,10 +144,31 @@ export const en = {
         publishedUnknown: "Unknown",
         yearsOfExperience: "Years of Experience",
         education: "Education",
+        noScoreAdvice: "Upload or select a resume to calculate your personalized match score.",
+        rescoring: "Recalculating score…",
       },
       noActiveResume: {
         prompt: "No resume selected. Upload or select a resume to get a match score.",
         linkText: "Go to Resume Manager",
+        selectorNote: "No active resume selected. Please select one.",
+        uploadToScoreButton: "Upload Resume to Score",
+      },
+      noActiveResumeModal: {
+        title: "No Active Resume Selected",
+        message:
+          "Would you like to select or upload a resume to calculate your match score, or continue to view the job details only?",
+        selectPlaceholder: "— Select a resume —",
+        uploadResume: "Upload Resume",
+        viewJobOnly: "View Job Only",
+        calculateScore: "Calculate Score",
+        calculating: "Calculating…",
+      },
+      scorePlaceholder: {
+        noResumeText: "Upload a resume to see your match score",
+        uploadButton: "Upload Resume to Score",
+        selectLabel: "Select a resume to calculate score",
+        calculateButton: "Calculate Match Score",
+        calculating: "Calculating score…",
       },
       blacklistModal: {
         title: "Blacklist Hit",

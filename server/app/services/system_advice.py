@@ -39,7 +39,7 @@ ADVICE_RECENT_DUP_APPLIED = (
     "You already applied to this job recently — this appears to be a duplicate."
 )
 ADVICE_RECENT_DUP_REJECTED = (
-    "This job was previously rejected — this appears to be a duplicate."
+    "A similar job in your history was auto-rejected — this appears to be a duplicate."
 )
 ADVICE_RECENT_DUP_NOT_APPLIED = (
     "This job is already in your list — this appears to be a duplicate."
@@ -53,7 +53,7 @@ ADVICE_OLD_SIMILAR_APPLIED = (
     "You applied to a similar role over 6 months ago — worth trying again!"
 )
 ADVICE_OLD_SIMILAR_REJECTED = (
-    "A similar role was previously rejected. Has the job or your profile changed?"
+    "A similar role in your history was auto-rejected. Has the job or your profile changed?"
 )
 ADVICE_OLD_SIMILAR_NOT_APPLIED = (
     "A similar job already exists in your archive from over 6 months ago."

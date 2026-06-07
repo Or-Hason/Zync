@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { JobScrapeResponse } from "@/types/job";
 
 const BASE = "/api/jobs";
@@ -44,5 +44,45 @@ export function useScrapeJob(): ReturnType<
 > {
   return useMutation<JobScrapeResponse, Error & { status?: number; data?: unknown }, ScrapeRequest>({
     mutationFn: scrapeJob,
+  });
+}
+
+/** Cached score returned by the read-only cache-check endpoint. */
+export interface CachedScoreResult {
+  match_score: number;
+  rationale: string | null;
+  matched_skills: string[];
+  missing_skills: string[];
+}
+
+async function checkCachedScore(
+  jobId: string,
+  resumeId: string,
+): Promise<CachedScoreResult | null> {
+  const res = await fetch(
+    `${BASE}/${encodeURIComponent(jobId)}/cached-score?resume_id=${encodeURIComponent(resumeId)}`,
+  );
+  if (!res.ok) return null;
+  const data = (await res.json()) as { cached: boolean } & Partial<CachedScoreResult>;
+  return data.cached ? (data as CachedScoreResult) : null;
+}
+
+/**
+ * Read-only cache check for a (job, resume) pair.
+ * No DB writes, no Gemini calls. Enabled only when both IDs are non-null.
+ *
+ * @param jobId - The job's UUID, or null to disable the query.
+ * @param resumeId - The resume's UUID, or null to disable the query.
+ * @returns Query result containing a CachedScoreResult or null on miss.
+ */
+export function useCheckCachedScore(
+  jobId: string | null,
+  resumeId: string | null,
+): ReturnType<typeof useQuery<CachedScoreResult | null>> {
+  return useQuery<CachedScoreResult | null>({
+    queryKey: ["jobs", jobId, "cached-score", resumeId],
+    queryFn: () => checkCachedScore(jobId!, resumeId!),
+    enabled: jobId !== null && resumeId !== null,
+    staleTime: 30_000,
   });
 }

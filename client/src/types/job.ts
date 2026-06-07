@@ -1,6 +1,11 @@
-/** Job scrape and evaluation response. */
+/** Job scrape and evaluation response.
+ *
+ * Scoring fields (rationale, matched_skills, missing_skills, system_advice,
+ * score_cached) are optional because the backend returns a plain JobRead object
+ * (without those fields) in the HTTP 400 "no_active_resume" error body.
+ */
 export interface JobScrapeResponse {
-  job_id: string;
+  id: string;
   job_title: string | null;
   company_name: string | null;
   job_description: string | null;
@@ -9,15 +14,15 @@ export interface JobScrapeResponse {
   source_url: string | null;
   status: string;
   match_score: number | null;
-  rationale: string | null;
-  matched_skills: string[];
-  missing_skills: string[];
-  system_advice: string;
-  score_cached: boolean;
-  assessment: {
-    is_duplicate: boolean;
-    duplicate_chance: number;
-  };
+  scored_by_resume_id?: string | null;
+  /** Flat field from JobRead — NOT nested under `assessment`. */
+  is_duplicate?: boolean;
+  duplicate_chance?: number | null;
+  rationale?: string | null;
+  matched_skills?: string[];
+  missing_skills?: string[];
+  system_advice?: string | null;
+  score_cached?: boolean;
 }
 
 export interface JobRequirements {

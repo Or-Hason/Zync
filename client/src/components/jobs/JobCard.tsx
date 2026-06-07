@@ -1,5 +1,9 @@
+import { useActiveResume } from "@/api/resumeApi";
+import { useCheckCachedScore } from "@/api/jobsApi";
 import { en } from "@/i18n/en";
-import type { JobScrapeResponse, JobRequirements } from "@/types/job";
+import type { JobScrapeResponse } from "@/types/job";
+import { RequirementsSection } from "./RequirementsSection";
+import { ScorePlaceholder } from "./ScorePlaceholder";
 import styles from "./JobCard.module.css";
 
 const s = en.pages.jobAdd.jobCard;
@@ -7,10 +11,6 @@ const s = en.pages.jobAdd.jobCard;
 type BannerStyle = "success" | "warning" | "error" | "info";
 type ScoreColor = "green" | "yellow" | "red" | "neutral";
 
-// Explicit value -> class maps. Dynamic template lookups (e.g.
-// styles[`banner${style}`]) silently resolve to undefined when the casing of
-// the runtime value does not match the CSS class name, so the colour classes
-// never applied. Mapping explicitly keeps it type-safe and case-correct.
 const BANNER_CLASS: Record<BannerStyle, string> = {
   success: styles.bannerSuccess,
   warning: styles.bannerWarning,
@@ -34,13 +34,27 @@ const SCORE_CLASS: Record<ScoreColor, string> = {
 
 interface JobCardProps {
   response: JobScrapeResponse;
+  /** Trigger re-scoring with the currently active resume. */
+  onRequestScore?: () => void;
+  isScoringPending?: boolean;
+  /** Navigate to Resume Manager, persisting re-score state. */
+  onNavigateUpload?: () => void;
 }
 
 /**
- * Displays a scored job posting with system advice, score badge, details, and skills.
- * @param response - The scrape and evaluation response from the backend.
+ * Displays a parsed job posting.
+ * When `match_score` is null and the active resume differs from the scoring resume,
+ * a read-only cache check runs automatically. If cached, the score renders
+ * immediately; otherwise a ScorePlaceholder with a "Calculate Score" button shows.
  */
-export function JobCard({ response }: JobCardProps): React.JSX.Element {
+export function JobCard({
+  response,
+  onRequestScore,
+  isScoringPending = false,
+  onNavigateUpload,
+}: JobCardProps): React.JSX.Element {
+  const { data: activeResume } = useActiveResume();
+
   const {
     job_title,
     company_name,
@@ -48,28 +62,67 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
     requirements,
     published_at,
     status,
-    match_score,
-    rationale,
-    matched_skills,
-    missing_skills,
+    match_score: responseMatchScore,
+    is_duplicate,
+    duplicate_chance,
+    rationale: responseRationale,
+    matched_skills: responseMatchedSkills,
+    missing_skills: responseMissingSkills,
     system_advice,
-    assessment,
+    scored_by_resume_id,
   } = response;
 
-  const showDuplicate =
-    assessment && (assessment.is_duplicate || assessment.duplicate_chance >= 60);
+  const activeResumeId = activeResume?.id ?? null;
+  // No cache lookup needed when the active resume is the one that produced this score.
+  const isCurrentResumeScore =
+    activeResumeId !== null && scored_by_resume_id === activeResumeId;
+  const cachedQueryEnabled = !isCurrentResumeScore && activeResumeId !== null;
 
-  // Derive banner style from score or advice content.
+  const { data: cachedScoreData, isFetching: isCacheChecking } = useCheckCachedScore(
+    cachedQueryEnabled ? response.id : null,
+    cachedQueryEnabled ? activeResumeId : null,
+  );
+
+  // Display score: current resume's own score if available, cached score for the
+  // new resume once loaded, or the original response score while a check is in flight.
+  let match_score: number | null;
+  let rationale: string | null | undefined;
+  let matched_skills: string[];
+  let missing_skills: string[];
+
+  if (isCurrentResumeScore || isCacheChecking) {
+    match_score = responseMatchScore;
+    rationale = responseRationale;
+    matched_skills = responseMatchedSkills ?? [];
+    missing_skills = responseMissingSkills ?? [];
+  } else if (cachedScoreData) {
+    match_score = cachedScoreData.match_score;
+    rationale = cachedScoreData.rationale;
+    matched_skills = cachedScoreData.matched_skills;
+    missing_skills = cachedScoreData.missing_skills;
+  } else {
+    match_score = null;
+    rationale = null;
+    matched_skills = [];
+    missing_skills = [];
+  }
+
+  const hasScore = match_score !== null;
+  const showDuplicate = is_duplicate || (duplicate_chance ?? 0) >= 60;
+
   const getBannerStyle = (): BannerStyle => {
+    const advice = system_advice ?? "";
     if (match_score !== null && match_score < 40) return "error";
-    if (system_advice.includes("Not recommended")) return "warning";
+    if (
+      advice.includes("Not recommended") ||
+      advice.includes("duplicate") ||
+      advice.includes("rejected")
+    )
+      return "warning";
     if (match_score !== null && match_score >= 70) return "success";
     return "info";
   };
 
-  const bannerStyle = getBannerStyle();
-
-  // Score badge colour band.
   const getScoreColor = (): ScoreColor => {
     if (match_score === null) return "neutral";
     if (match_score >= 70) return "green";
@@ -77,47 +130,52 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
     return "red";
   };
 
-  const scoreColor = getScoreColor();
-
   const getStatusLabel = (): string => {
     switch (status) {
-      case "auto_rejected":
-        return s.statusAutoRejected;
-      case "not_applied":
-        return s.statusNotApplied;
-      default:
-        return status;
+      case "auto_rejected": return s.statusAutoRejected;
+      case "not_applied": return s.statusNotApplied;
+      default: return status;
     }
   };
 
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return s.publishedUnknown;
     try {
-      const date = new Date(dateStr);
-      // When the backend parses a relative date ("3 hours ago"), the time
-      // component will be non-zero; show it. Pure date strings land at midnight UTC.
+      // Bare ISO strings from the backend have no timezone suffix — treat as UTC.
+      const utc = /Z|[+-]\d{2}:\d{2}$/.test(dateStr) ? dateStr : `${dateStr}Z`;
+      const date = new Date(utc);
       const isMidnightUtc =
         date.getUTCHours() === 0 && date.getUTCMinutes() === 0 && date.getUTCSeconds() === 0;
-      if (isMidnightUtc) {
-        return date.toLocaleDateString(undefined, { dateStyle: "medium" });
-      }
-      return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+      return isMidnightUtc
+        ? date.toLocaleDateString(undefined, { dateStyle: "medium" })
+        : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
     } catch {
       return s.publishedUnknown;
     }
   };
 
+  const bannerStyle = getBannerStyle();
+  // Always show banner: real advice from Gemini, or no-score guidance as fallback.
+  const bannerText = system_advice ?? (!hasScore ? s.noScoreAdvice : null);
+  const scoreColor = getScoreColor();
+
   return (
     <div className={styles.card}>
-      <div className={`${styles.banner} ${BANNER_CLASS[bannerStyle]}`} role="status" aria-live="polite">
-        <span className={styles.bannerIcon} aria-hidden="true">
-          {BANNER_ICON[bannerStyle]}
-        </span>
-        <span className={styles.bannerBody}>
-          <span className={styles.bannerLabel}>{s.adviceLabel}</span>
-          <span className={styles.bannerText}>{system_advice}</span>
-        </span>
-      </div>
+      {bannerText && (
+        <div
+          className={`${styles.banner} ${BANNER_CLASS[bannerStyle]}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className={styles.bannerIcon} aria-hidden="true">
+            {BANNER_ICON[bannerStyle]}
+          </span>
+          <span className={styles.bannerBody}>
+            <span className={styles.bannerLabel}>{s.adviceLabel}</span>
+            <span className={styles.bannerText}>{bannerText}</span>
+          </span>
+        </div>
+      )}
 
       <div className={styles.header}>
         <div className={styles.headerMain}>
@@ -143,13 +201,23 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
         </div>
       </div>
 
-      {showDuplicate && assessment && (
+      {showDuplicate && (
         <div className={styles.duplicateWarning} role="alert">
           <span className={styles.duplicateIcon} aria-hidden="true">⚠</span>
           <span className={styles.duplicateText}>
-            {s.duplicateWarning}{" "}
-            {s.duplicateChance.replace("{chance}", String(assessment.duplicate_chance))}
+            <span>{s.duplicateWarning}</span>
+            <span className={styles.duplicateChanceText}>
+              {s.duplicateChance.replace("{chance}", String(duplicate_chance ?? 0))}
+            </span>
           </span>
+        </div>
+      )}
+
+      {/* Inline spinner while scoring is in progress — visible without scrolling */}
+      {isScoringPending && (
+        <div className={styles.rescoringIndicator} aria-live="polite">
+          <div className={styles.miniSpinner} role="status" aria-label={s.rescoring} />
+          <span>{s.rescoring}</span>
         </div>
       )}
 
@@ -162,6 +230,16 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
 
       {requirements && <RequirementsSection requirements={requirements} />}
 
+      {!hasScore && !isScoringPending && onRequestScore !== undefined && (
+        <section className={styles.section}>
+          <ScorePlaceholder
+            onRequestScore={onRequestScore}
+            onNavigateUpload={onNavigateUpload ?? ((): void => {})}
+            isScoringPending={isScoringPending}
+          />
+        </section>
+      )}
+
       {published_at && (
         <section className={styles.section}>
           <p className={styles.meta}>
@@ -171,11 +249,11 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
         </section>
       )}
 
-      {matched_skills.length > 0 && (
+      {hasScore && (matched_skills?.length ?? 0) > 0 && (
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>{s.matchedSkills}</h3>
           <div className={styles.skillsList}>
-            {matched_skills.map((skill) => (
+            {matched_skills!.map((skill) => (
               <span key={skill} className={`${styles.skill} ${styles.skillMatched}`}>
                 {skill}
               </span>
@@ -184,11 +262,11 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
         </section>
       )}
 
-      {missing_skills.length > 0 && (
+      {hasScore && (missing_skills?.length ?? 0) > 0 && (
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>{s.missingSkills}</h3>
           <div className={styles.skillsList}>
-            {missing_skills.map((skill) => (
+            {missing_skills!.map((skill) => (
               <span key={skill} className={`${styles.skill} ${styles.skillMissing}`}>
                 {skill}
               </span>
@@ -197,101 +275,12 @@ export function JobCard({ response }: JobCardProps): React.JSX.Element {
         </section>
       )}
 
-      {rationale && (
+      {hasScore && rationale && (
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>{s.rationale}</h3>
           <p className={styles.rationale}>{rationale}</p>
         </section>
       )}
     </div>
-  );
-}
-
-interface RequirementsSectionProps {
-  requirements: JobRequirements;
-}
-
-function SkillTags({ items }: { items: string[] }): React.JSX.Element {
-  return (
-    <div className={styles.skillsList}>
-      {items.map((skill) => (
-        <span key={skill} className={`${styles.skill} ${styles.skillRequired}`}>
-          {skill}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function RequirementsSection({ requirements }: RequirementsSectionProps): React.JSX.Element {
-  const { skills, recommended_skills, years_of_experience, education, other, recommended_other } =
-    requirements;
-
-  const hasRequired = (skills?.length ?? 0) > 0 || (other?.length ?? 0) > 0;
-  const hasRecommended = (recommended_skills?.length ?? 0) > 0 || (recommended_other?.length ?? 0) > 0;
-  const hasMeta = years_of_experience != null || !!education;
-
-  if (!hasRequired && !hasRecommended && !hasMeta) return <></>;
-
-  return (
-    <section className={styles.section}>
-      <h3 className={styles.sectionTitle}>{s.requirementsLabel}</h3>
-      <div className={styles.reqList}>
-        {hasRequired && (
-          <div className={styles.reqGroup}>
-            <span className={styles.reqGroupTitle}>{s.requiredGroup}</span>
-            {skills && skills.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.skillsLabel}:</span>
-                <SkillTags items={skills} />
-              </div>
-            )}
-            {other && other.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.other}:</span>
-                <ul className={styles.otherList}>
-                  {other.map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        {hasRecommended && (
-          <div className={styles.reqGroup}>
-            <span className={styles.reqGroupTitle}>{s.recommendedGroup}</span>
-            {recommended_skills && recommended_skills.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.skillsLabel}:</span>
-                <SkillTags items={recommended_skills} />
-              </div>
-            )}
-            {recommended_other && recommended_other.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.other}:</span>
-                <ul className={styles.otherList}>
-                  {recommended_other.map((item, idx) => (
-                    <li key={idx}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-        {years_of_experience != null && (
-          <div className={styles.reqItem}>
-            <span className={styles.reqLabel}>{s.yearsOfExperience}:</span>
-            <span>{years_of_experience} years</span>
-          </div>
-        )}
-        {education && (
-          <div className={styles.reqItem}>
-            <span className={styles.reqLabel}>{s.education}:</span>
-            <span>{education}</span>
-          </div>
-        )}
-      </div>
-    </section>
   );
 }

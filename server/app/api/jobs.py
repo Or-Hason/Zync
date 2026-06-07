@@ -1,7 +1,8 @@
 """Job ingestion + scoring pipeline: scrape, filter, score, detect duplicates.
 
-Pipeline order: extract -> duplicate detection -> blacklist filter ->
-active-resume guard -> score cache -> Gemini score -> auto-reject -> advice.
+Pipeline order: extract -> classification gate -> duplicate detection ->
+score cache (early return on hit) -> blacklist filter -> active-resume guard ->
+Gemini score -> persist -> auto-reject -> advice.
 
 PII / privacy rule (CLAUDE.md, DESIGN.md): logs reference only ``job_id`` and
 ``source_type`` — never raw job text, resume PII, or the Gemini API key.
@@ -10,6 +11,7 @@ PII / privacy rule (CLAUDE.md, DESIGN.md): logs reference only ``job_id`` and
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.encoders import jsonable_encoder
@@ -27,14 +29,13 @@ from app.schemas.job import (
     ScoreResult,
 )
 from app.services.blacklist_filter import find_blacklist_hit
-from app.services.duplicate_detection import detect_duplicate
+from app.services.duplicate_detection import detect_duplicate, DuplicateAssessment
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_parser import sanitize_job_data
 from app.services.job_repository import (
     load_existing_jobs,
     load_scored_jobs,
     new_job,
-    update_job_with_score,
 )
 from app.services.job_scraper import (
     ContentTooLargeError,
@@ -44,7 +45,7 @@ from app.services.job_scraper import (
     fetch_html,
 )
 from app.services.ollama_client import OllamaClient, get_ollama_client
-from app.services.score_cache import find_cached_score
+from app.services.score_cache import find_cached_score, find_cached_score_raw
 from app.services.settings_store import SettingsStore, get_settings_store
 from app.services.system_advice import LOW_SCORE_THRESHOLD, build_system_advice
 from app.services.text_similarity import comparison_string
@@ -93,10 +94,10 @@ async def scrape_job(
     """Run the full ingestion + scoring pipeline for one job.
 
     Returns:
-        HTTP 201 with the scored job (:class:`JobScrapeResponse`) on success;
-        HTTP 422 on a blacklist hit (``force_score`` false); HTTP 400 when no
-        active resume exists. 502/422 on fetch/size errors; 500 if Gemini is
-        not configured and a fresh score is required.
+        HTTP 200 with the scored job on a cache hit (existing row returned,
+        no DB write); HTTP 201 on a fresh score; HTTP 422 on a blacklist hit
+        (``force_score`` false); HTTP 400 when no active resume exists.
+        502/422 on fetch/size errors; 500 if Gemini is not configured.
     """
     content = await _resolve_content(payload)
 
@@ -106,7 +107,7 @@ async def scrape_job(
     if not parsed.core_job_posting:
         parsed.core_job_posting = content
 
-    # ── Classification gate: halt before any DB write on junk input ─────────────
+    # ── Classification gate: halt before any DB write on junk input ──────────
     rejection = _classification_rejection(parsed)
     if rejection is not None:
         logger.info(
@@ -119,82 +120,126 @@ async def scrape_job(
     if not parsed.job_title:
         parsed.job_title = parsed.requirements.inferred_role or "Unknown Title"
 
-    existing = await load_existing_jobs(db)
-    assessment = detect_duplicate(parsed.core_job_posting, existing)
+    existing_jobs = await load_existing_jobs(db)
+    assessment = detect_duplicate(parsed.core_job_posting, existing_jobs)
     source_url = str(payload.url) if payload.url else None
     candidate_text = comparison_string(parsed.job_title, parsed.job_description)
 
-    # ── Active resume + cache check (runs before blacklist) ───────────────────
-    # If a near-identical job was already scored against the current resume, the
-    # user has implicitly accepted it; return the cached result immediately so
-    # they are never prompted about the blacklist for something already evaluated.
     active_resume = await load_active_resume(db)
-    score: ScoreResult | None = None
-    score_cached = False
 
+    # ── Cache check — MUST run before blacklist ───────────────────────────────
+    # If this job was already scored with the active resume, skip blacklist and
+    # Gemini but still INSERT a new row to record the import event.
     if active_resume is not None:
         scored_jobs = await load_scored_jobs(db, active_resume.id)
         cached = find_cached_score(candidate_text, scored_jobs)
         if cached is not None:
-            score = cached
-            score_cached = True
-
-    # ── Blacklist + Gemini (skipped entirely on a cache hit) ──────────────────
-    if not score_cached:
-        keyword = find_blacklist_hit(
-            parsed.job_title, parsed.job_description, await store.get_blacklist()
-        )
-        if keyword and not payload.force_score:
+            cached_score_details: dict = {
+                "rationale": cached.rationale,
+                "matched_skills": cached.matched_skills,
+                "missing_skills": cached.missing_skills,
+            }
+            cached_job_status = (
+                "auto_rejected" if cached.match_score < LOW_SCORE_THRESHOLD else "not_applied"
+            )
+            # A cache hit means near-identical content was already scored — mark
+            # the new row as a duplicate so the UI surfaces the warning.
+            cached_assessment = DuplicateAssessment(
+                is_duplicate=True,
+                duplicate_chance=max(assessment.duplicate_chance or 0, 90),
+                matched_job_status=assessment.matched_job_status,
+            )
+            cached_advice = build_system_advice(
+                match_score=cached.match_score,
+                is_duplicate=True,
+                duplicate_chance=cached_assessment.duplicate_chance,
+                matched_job_status=assessment.matched_job_status,
+            )
             job = new_job(
                 parsed,
                 raw_content=parsed.core_job_posting,
                 source_url=source_url,
-                assessment=assessment,
-                status="auto_rejected",
+                assessment=cached_assessment,
+                status=cached_job_status,
+                match_score=cached.match_score,
+                score_details=cached_score_details,
+                scored_by_resume_id=active_resume.id,
             )
             await _persist(db, job)
-            return JSONResponse(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                content={
-                    "error": "blacklist_hit",
-                    "matched_keyword": keyword,
-                    "job": jsonable_encoder(JobRead.model_validate(job)),
-                },
+            logger.info(
+                "Score cache hit — inserted new row",
+                extra={"job_id": str(job.id), "source_type": job.source_type},
             )
+            return _build_response(job, cached, cached_advice, score_cached=True)
 
-        # ── No-active-resume guard ────────────────────────────────────────────
-        if active_resume is None:
-            job = new_job(
-                parsed,
-                raw_content=parsed.core_job_posting,
-                source_url=source_url,
-                assessment=assessment,
-                status="not_applied",
-            )
-            await _persist(db, job)
-            return JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={
-                    "error": "no_active_resume",
-                    "message": _NO_ACTIVE_RESUME_MESSAGE,
-                    "job": jsonable_encoder(JobRead.model_validate(job)),
-                },
-            )
-
-        # ── Gemini scoring ────────────────────────────────────────────────────
-        if not gemini.is_configured:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Gemini API key is not configured.",
-            )
-        score = await gemini.score(
-            parsed.job_title,
-            parsed.job_description,
-            parsed.requirements.model_dump(),
-            active_resume.structured_data,
+    # ── Blacklist check ───────────────────────────────────────────────────────
+    keyword = find_blacklist_hit(
+        parsed.job_title, parsed.job_description, await store.get_blacklist()
+    )
+    if keyword and not payload.force_score:
+        job = new_job(
+            parsed,
+            raw_content=parsed.core_job_posting,
+            source_url=source_url,
+            assessment=assessment,
+            status="auto_rejected",
+        )
+        await _persist(db, job)
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            content={
+                "error": "blacklist_hit",
+                "matched_keyword": keyword,
+                "job": jsonable_encoder(JobRead.model_validate(job)),
+            },
         )
 
-    # ── Persist with score, auto-reject low matches, and advise ──────────────
+    # ── No-active-resume guard ────────────────────────────────────────────────
+    # When existing_job_id is supplied the row was already created by an earlier
+    # pipeline step; reuse it to avoid a duplicate DB row.
+    if active_resume is None:
+        if payload.existing_job_id is not None:
+            existing_row = await db.get(Job, payload.existing_job_id)
+            if existing_row is not None:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": "no_active_resume",
+                        "message": _NO_ACTIVE_RESUME_MESSAGE,
+                        "job": jsonable_encoder(JobRead.model_validate(existing_row)),
+                    },
+                )
+        job = new_job(
+            parsed,
+            raw_content=parsed.core_job_posting,
+            source_url=source_url,
+            assessment=assessment,
+            status="not_applied",
+        )
+        await _persist(db, job)
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": "no_active_resume",
+                "message": _NO_ACTIVE_RESUME_MESSAGE,
+                "job": jsonable_encoder(JobRead.model_validate(job)),
+            },
+        )
+
+    # ── Gemini scoring ────────────────────────────────────────────────────────
+    if not gemini.is_configured:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Gemini API key is not configured.",
+        )
+    score: ScoreResult | None = await gemini.score(
+        parsed.job_title,
+        parsed.job_description,
+        parsed.requirements.model_dump(),
+        active_resume.structured_data,
+    )
+
+    # ── Build persist metadata ────────────────────────────────────────────────
     if score is not None:
         match_score: int | None = score.match_score
         score_details: dict | None = {
@@ -202,7 +247,7 @@ async def scrape_job(
             "matched_skills": score.matched_skills,
             "missing_skills": score.missing_skills,
         }
-        scored_by = active_resume.id if active_resume else None
+        scored_by = active_resume.id
         job_status = (
             "auto_rejected" if match_score < LOW_SCORE_THRESHOLD else "not_applied"
         )
@@ -219,47 +264,24 @@ async def scrape_job(
         matched_job_status=assessment.matched_job_status,
     )
 
-    # When the user bypasses a blacklist hit the first request already persisted
-    # an auto_rejected row.  Update that row instead of creating a duplicate.
-    if payload.existing_job_id is not None:
-        job = await update_job_with_score(
-            db,
-            payload.existing_job_id,
-            match_score=match_score,
-            score_details=score_details,
-            scored_by_resume_id=scored_by,
-            status=job_status,
-        )
-        if job is None:
-            job = new_job(
-                parsed,
-                raw_content=parsed.core_job_posting,
-                source_url=source_url,
-                assessment=assessment,
-                status=job_status,
-                match_score=match_score,
-                score_details=score_details,
-                scored_by_resume_id=scored_by,
-            )
-            await _persist(db, job)
-    else:
-        job = new_job(
-            parsed,
-            raw_content=parsed.core_job_posting,
-            source_url=source_url,
-            assessment=assessment,
-            status=job_status,
-            match_score=match_score,
-            score_details=score_details,
-            scored_by_resume_id=scored_by,
-        )
-        await _persist(db, job)
+    # Always INSERT a new row — never update an existing row's score fields.
+    job = new_job(
+        parsed,
+        raw_content=parsed.core_job_posting,
+        source_url=source_url,
+        assessment=assessment,
+        status=job_status,
+        match_score=match_score,
+        score_details=score_details,
+        scored_by_resume_id=scored_by,
+    )
+    await _persist(db, job)
 
     logger.info(
         "Job scored and stored",
         extra={"job_id": str(job.id), "source_type": job.source_type},
     )
-    return _build_response(job, score, advice, score_cached)
+    return _build_response(job, score, advice, score_cached=False)
 
 
 def _classification_rejection(parsed: ParsedJob) -> JSONResponse | None:
@@ -319,6 +341,55 @@ async def _persist(db: AsyncSession, job: Job) -> None:
     db.add(job)
     await db.flush()
     await db.refresh(job)
+
+
+@router.get(
+    "/{job_id}/cached-score",
+    summary="Read-only cache check for a (job, resume) pair — no DB writes",
+)
+async def get_cached_score(
+    job_id: UUID,
+    resume_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> JSONResponse:
+    """Check whether a score is already cached for the given (job, resume) pair.
+
+    No Gemini calls, no blacklist checks, no DB writes of any kind.
+
+    Args:
+        job_id: The job's UUID (path parameter).
+        resume_id: The resume's UUID (query parameter).
+        db: Active async DB session.
+
+    Returns:
+        ``{ "cached": false }`` on a miss, or
+        ``{ "cached": true, "match_score": int, "rationale": str | null,
+        "matched_skills": [...], "missing_skills": [...] }`` on a hit.
+    """
+    job = await db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found"
+        )
+
+    candidate_raw = job.raw_content or comparison_string(job.job_title, job.job_description)
+    scored_jobs = await load_scored_jobs(db, resume_id)
+    cached = find_cached_score_raw(candidate_raw, scored_jobs)
+
+    if cached is None:
+        return JSONResponse(
+            status_code=status.HTTP_200_OK, content={"cached": False}
+        )
+    return JSONResponse(
+        status_code=status.HTTP_200_OK,
+        content={
+            "cached": True,
+            "match_score": cached.match_score,
+            "rationale": cached.rationale,
+            "matched_skills": cached.matched_skills,
+            "missing_skills": cached.missing_skills,
+        },
+    )
 
 
 async def _resolve_content(payload: JobScrapeRequest) -> str:
