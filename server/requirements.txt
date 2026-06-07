@@ -17,3 +17,4 @@ google-genai==2.8.0
 # libmagic (Linux/macOS); on Windows the DLLs are bundled by python-magic-bin.
 python-magic==0.4.27; sys_platform != "win32"
 python-magic-bin==0.4.14; sys_platform == "win32"
+dateparser==1.2.0

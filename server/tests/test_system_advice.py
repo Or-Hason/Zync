@@ -1,12 +1,16 @@
-"""Tests for the rule-based system_advice generator (all 5 rules + fallback)."""
+"""Tests for the rule-based system_advice generator."""
 
 from __future__ import annotations
 
 from app.services.system_advice import (
     ADVICE_LOW_SCORE,
     ADVICE_MODERATE,
-    ADVICE_OLD_SIMILAR,
-    ADVICE_RECENT_DUPLICATE,
+    ADVICE_OLD_SIMILAR_APPLIED,
+    ADVICE_OLD_SIMILAR_NOT_APPLIED,
+    ADVICE_OLD_SIMILAR_REJECTED,
+    ADVICE_RECENT_DUP_APPLIED,
+    ADVICE_RECENT_DUP_NOT_APPLIED,
+    ADVICE_RECENT_DUP_REJECTED,
     ADVICE_STRONG,
     ADVICE_UNSCORED,
     build_system_advice,
@@ -23,23 +27,10 @@ class TestSystemAdviceRules:
         assert advice == ADVICE_LOW_SCORE
 
     def test_rule1_low_score_takes_priority_over_duplicate(self) -> None:
-        # Low score wins even when the job is also a recent duplicate.
         advice = build_system_advice(
             match_score=10, is_duplicate=True, duplicate_chance=95
         )
         assert advice == ADVICE_LOW_SCORE
-
-    def test_rule2_recent_duplicate(self) -> None:
-        advice = build_system_advice(
-            match_score=80, is_duplicate=True, duplicate_chance=90
-        )
-        assert advice == ADVICE_RECENT_DUPLICATE
-
-    def test_rule3_old_similar(self) -> None:
-        advice = build_system_advice(
-            match_score=80, is_duplicate=False, duplicate_chance=60
-        )
-        assert advice == ADVICE_OLD_SIMILAR
 
     def test_rule4_strong_match(self) -> None:
         advice = build_system_advice(
@@ -64,6 +55,63 @@ class TestSystemAdviceRules:
         ) == ADVICE_MODERATE
 
 
+class TestRecentDuplicateAdvice:
+    """Recent duplicate phrasing varies by matched job status."""
+
+    def test_not_applied_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=True, duplicate_chance=90,
+            matched_job_status="not_applied",
+        )
+        assert advice == ADVICE_RECENT_DUP_NOT_APPLIED
+
+    def test_auto_rejected_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=True, duplicate_chance=90,
+            matched_job_status="auto_rejected",
+        )
+        assert advice == ADVICE_RECENT_DUP_REJECTED
+
+    def test_applied_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=True, duplicate_chance=90,
+            matched_job_status="applied",
+        )
+        assert advice == ADVICE_RECENT_DUP_APPLIED
+
+    def test_deep_pipeline_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=True, duplicate_chance=90,
+            matched_job_status="professional_interview",
+        )
+        assert advice == ADVICE_RECENT_DUP_APPLIED
+
+
+class TestOldSimilarAdvice:
+    """Old similar job phrasing varies by matched job status."""
+
+    def test_not_applied_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=False, duplicate_chance=60,
+            matched_job_status="not_applied",
+        )
+        assert advice == ADVICE_OLD_SIMILAR_NOT_APPLIED
+
+    def test_auto_rejected_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=False, duplicate_chance=60,
+            matched_job_status="auto_rejected",
+        )
+        assert advice == ADVICE_OLD_SIMILAR_REJECTED
+
+    def test_applied_status(self) -> None:
+        advice = build_system_advice(
+            match_score=80, is_duplicate=False, duplicate_chance=60,
+            matched_job_status="applied",
+        )
+        assert advice == ADVICE_OLD_SIMILAR_APPLIED
+
+
 class TestUnscoredFallback:
     """A missing score with no duplicate signal yields the fallback advice."""
 
@@ -75,6 +123,7 @@ class TestUnscoredFallback:
 
     def test_unscored_but_duplicate_still_advises_duplicate(self) -> None:
         advice = build_system_advice(
-            match_score=None, is_duplicate=True, duplicate_chance=90
+            match_score=None, is_duplicate=True, duplicate_chance=90,
+            matched_job_status="not_applied",
         )
-        assert advice == ADVICE_RECENT_DUPLICATE
+        assert advice == ADVICE_RECENT_DUP_NOT_APPLIED

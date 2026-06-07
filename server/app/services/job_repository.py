@@ -24,6 +24,7 @@ DUPLICATE_SCAN_LIMIT = 500
 def new_job(
     parsed: ParsedJob,
     *,
+    raw_content: str | None,
     source_url: str | None,
     assessment: DuplicateAssessment,
     status: str,
@@ -35,6 +36,7 @@ def new_job(
 
     Args:
         parsed: Sanitised extracted job fields.
+        raw_content: Normalised raw ingested text (for duplicate detection).
         source_url: Originating URL (``None`` for raw-text ingestion).
         assessment: Duplicate-detection outcome.
         status: The job status to persist.
@@ -51,6 +53,7 @@ def new_job(
         job_title=parsed.job_title,
         company_description=parsed.company_description,
         job_description=parsed.job_description,
+        raw_content=raw_content,
         requirements=parsed.requirements.model_dump(),
         source_type="manual",
         source_url=source_url,
@@ -74,16 +77,16 @@ async def load_existing_jobs(db: AsyncSession) -> list[ExistingJob]:
         Up to :data:`DUPLICATE_SCAN_LIMIT` newest jobs as :class:`ExistingJob`.
     """
     stmt = (
-        select(Job.job_title, Job.job_description, Job.created_at)
+        select(Job.raw_content, Job.created_at, Job.status)
         .order_by(Job.created_at.desc())
         .limit(DUPLICATE_SCAN_LIMIT)
     )
     rows = (await db.execute(stmt)).all()
     return [
         ExistingJob(
-            job_title=row.job_title,
-            job_description=row.job_description,
+            raw_content=row.raw_content,
             created_at=row.created_at,
+            status=row.status,
         )
         for row in rows
     ]
@@ -117,3 +120,37 @@ async def load_scored_jobs(db: AsyncSession, resume_id: UUID) -> list[ScoredJob]
         )
         for row in rows
     ]
+
+
+async def update_job_with_score(
+    db: AsyncSession,
+    job_id: UUID,
+    *,
+    match_score: int | None,
+    score_details: dict | None,
+    scored_by_resume_id: UUID | None,
+    status: str,
+) -> Job | None:
+    """Apply scoring results to an existing job row (e.g. a bypassed blacklist hit).
+
+    Args:
+        db: Active async DB session.
+        job_id: Primary key of the job to update.
+        match_score: New 0–100 score (or ``None``).
+        score_details: ``{rationale, matched_skills, missing_skills}`` dict.
+        scored_by_resume_id: Resume that produced the score.
+        status: New job status after scoring.
+
+    Returns:
+        The refreshed :class:`Job` row, or ``None`` when not found.
+    """
+    job = await db.get(Job, job_id)
+    if job is None:
+        return None
+    job.match_score = match_score
+    job.score_details = score_details
+    job.scored_by_resume_id = scored_by_resume_id
+    job.status = status
+    await db.flush()
+    await db.refresh(job)
+    return job

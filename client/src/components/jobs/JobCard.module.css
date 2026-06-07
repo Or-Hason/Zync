@@ -8,38 +8,82 @@
   gap: 0;
 }
 
-/* ── Banner ──────────────────────────────────────────────────────────────── */
+/* ── Banner (system advice callout) ──────────────────────────────────────── */
 
 .banner {
-  padding: 12px 16px;
-  font-size: 13px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 16px 16px 0 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid;
+  border-left-width: 4px;
+}
+
+/* Icon sits in a filled circle so the callout reads as a status, not a title. */
+.bannerIcon {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.bannerBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bannerLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.bannerText {
+  font-size: 14px;
   font-weight: 500;
-  line-height: 1.5;
+  line-height: 1.45;
+  color: var(--color-text);
 }
 
 .bannerSuccess {
   background: rgba(76, 175, 130, 0.1);
-  border-bottom: 1px solid var(--color-success);
-  color: var(--color-success);
+  border-color: var(--color-success);
 }
+.bannerSuccess .bannerIcon { background: var(--color-success); }
+.bannerSuccess .bannerLabel { color: var(--color-success); }
 
 .bannerWarning {
   background: rgba(230, 169, 53, 0.1);
-  border-bottom: 1px solid var(--color-warning);
-  color: var(--color-warning);
+  border-color: var(--color-warning);
 }
+.bannerWarning .bannerIcon { background: var(--color-warning); color: #000; }
+.bannerWarning .bannerLabel { color: var(--color-warning); }
 
 .bannerError {
   background: rgba(224, 92, 106, 0.1);
-  border-bottom: 1px solid var(--color-error);
-  color: var(--color-error);
+  border-color: var(--color-error);
 }
+.bannerError .bannerIcon { background: var(--color-error); }
+.bannerError .bannerLabel { color: var(--color-error); }
 
 .bannerInfo {
   background: rgba(124, 106, 245, 0.1);
-  border-bottom: 1px solid var(--color-accent);
-  color: var(--color-accent);
+  border-color: var(--color-accent);
 }
+.bannerInfo .bannerIcon { background: var(--color-accent); }
+.bannerInfo .bannerLabel { color: var(--color-accent); }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 
@@ -47,7 +91,7 @@
   padding: 20px 24px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
   border-bottom: 1px solid var(--color-border);
 }
@@ -58,10 +102,26 @@
 
 .title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 22px;
+  font-weight: 700;
   color: var(--color-text);
-  letter-spacing: -0.2px;
+  letter-spacing: -0.4px;
+  line-height: 1.25;
+}
+
+.role {
+  margin: 6px 0 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+.rolePrefix {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.75;
 }
 
 .company {
@@ -72,39 +132,55 @@
 
 .badges {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 .scoreBadge {
-  min-width: 48px;
-  height: 36px;
+  width: 88px;
+  height: 88px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 600;
+  gap: 2px;
+  border-radius: var(--radius-lg);
   color: #fff;
   text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+}
+
+.scoreValue {
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.scoreLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  opacity: 0.92;
 }
 
 .scoreBadgeGreen {
-  background: var(--color-success);
+  background: linear-gradient(135deg, #54c48f 0%, #3d8c66 100%);
 }
 
 .scoreBadgeYellow {
-  background: var(--color-warning);
-  color: #000;
+  background: linear-gradient(135deg, #f0b94a 0%, #d99a2e 100%);
+  color: #2a2000;
 }
 
 .scoreBadgeRed {
-  background: var(--color-error);
+  background: linear-gradient(135deg, #ec6675 0%, #c93d4c 100%);
 }
 
 .scoreBadgeNeutral {
-  background: var(--color-text-dim);
+  background: linear-gradient(135deg, #8a8a93 0%, #5e5e66 100%);
 }
 
 .statusBadge {
@@ -197,6 +273,25 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.reqGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.reqGroupTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
 }
 
 .reqItem {

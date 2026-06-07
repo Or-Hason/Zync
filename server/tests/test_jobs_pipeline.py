@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from app.services.system_advice import ADVICE_LOW_SCORE
 from tests._job_pipeline import (
+    SAMPLE_JOB_DESCRIPTION,
+    SAMPLE_JOB_RAW,
     FakeBlacklistStore,
     FakeGemini,
     FakeJobOllama,
@@ -48,13 +51,14 @@ class TestBlacklistFiltration:
     """Filtration runs on title + description; force_score can bypass it."""
 
     def test_hit_without_force_returns_422_and_skips_gemini(self) -> None:
-        response, gemini, _ = _scrape(keywords=["python"])
+        response, gemini, session = _scrape(keywords=["python"])
         assert response.status_code == 422
         body = response.json()
         assert body["error"] == "blacklist_hit"
         assert body["matched_keyword"] == "python"
         assert body["job"]["status"] == "auto_rejected"
         assert gemini.calls == []  # Gemini must not be called on a blacklist hit.
+        assert len(session.added) == 1  # auto_rejected row is persisted.
 
     def test_hit_with_force_proceeds_to_scoring(self) -> None:
         response, gemini, _ = _scrape(
@@ -87,7 +91,7 @@ class TestScoreCaching:
     def test_cache_hit_reuses_score_and_skips_gemini(self) -> None:
         cached = ScoredRow(
             "Senior Python Engineer",
-            "Own the async FastAPI platform and PostgreSQL layer.",
+            SAMPLE_JOB_DESCRIPTION,
             91,
             {
                 "rationale": "cached!",
@@ -128,9 +132,7 @@ class TestGeminiScoring:
         assert body["rationale"] == "Strong overlap on backend skills."
         assert body["matched_skills"] == ["Python", "FastAPI"]
         assert body["missing_skills"] == ["Go"]
-        assert body["system_advice"] == (
-            "Not recommended — this role is a poor match for your profile."
-        )
+        assert body["system_advice"] == ADVICE_LOW_SCORE
 
     def test_gemini_failure_leaves_score_null(self) -> None:
         response, _, _ = _scrape(gemini_result=None)
@@ -143,3 +145,52 @@ class TestGeminiScoring:
     def test_missing_api_key_returns_500(self) -> None:
         response, _, _ = _scrape(gemini_configured=False)
         assert response.status_code == 500
+
+
+class TestContentClassificationGate:
+    """Non-VALID_JOB classifications halt the pipeline without a DB insert."""
+
+    def _scrape_classified(self, classification: str) -> tuple:
+        session = FakeJobSession()
+        session.active_resumes = [make_active_resume()]
+        payload = {**SAMPLE_JOB_RAW, "content_classification": classification}
+        ollama = FakeJobOllama(payload=payload)
+        gemini = FakeGemini(result=make_score_result(78))
+        store = FakeBlacklistStore()
+        with pipeline_client(session, ollama, gemini, store) as client:
+            response = client.post("/api/jobs/scrape", json={"raw_text": "any text"})
+        return response, session
+
+    def test_login_wall_returns_422_no_db_insert(self) -> None:
+        response, session = self._scrape_classified("LOGIN_WALL")
+        assert response.status_code == 422
+        assert response.json()["error"] == "login_wall"
+        assert not session.added
+
+    def test_irrelevant_returns_422_no_db_insert(self) -> None:
+        response, session = self._scrape_classified("IRRELEVANT")
+        assert response.status_code == 422
+        assert response.json()["error"] == "irrelevant_content"
+        assert not session.added
+
+    def test_insufficient_data_returns_422_no_db_insert(self) -> None:
+        response, session = self._scrape_classified("INSUFFICIENT_DATA")
+        assert response.status_code == 422
+        assert response.json()["error"] == "insufficient_data"
+        assert not session.added
+
+    def test_valid_job_proceeds_to_scoring(self) -> None:
+        response, _ = self._scrape_classified("VALID_JOB")
+        assert response.status_code == 201
+
+    def test_missing_classification_proceeds_to_scoring(self) -> None:
+        """None classification is treated as valid (lenient fallback)."""
+        session = FakeJobSession()
+        session.active_resumes = [make_active_resume()]
+        payload = {**SAMPLE_JOB_RAW, "content_classification": None}
+        ollama = FakeJobOllama(payload=payload)
+        gemini = FakeGemini(result=make_score_result(78))
+        store = FakeBlacklistStore()
+        with pipeline_client(session, ollama, gemini, store) as client:
+            response = client.post("/api/jobs/scrape", json={"raw_text": "any text"})
+        assert response.status_code == 201

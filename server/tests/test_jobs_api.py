@@ -15,6 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests._job_pipeline import (
+    SAMPLE_CORE_JOB_POSTING,
     FakeBlacklistStore,
     FakeGemini,
     FakeJobOllama,
@@ -135,16 +136,13 @@ class TestDuplicateDetection:
     ) -> None:
         from tests._job_pipeline import ExistingRow
 
+        # Duplicate detection compares core_job_posting (AI-extracted), so the
+        # stored raw_content must match what FakeJobOllama returns in SAMPLE_JOB_RAW.
         session.existing_rows = [
-            ExistingRow(
-                "Senior Python Engineer",
-                "Own the async FastAPI platform and PostgreSQL layer.",
-                datetime.now(timezone.utc),
-            )
+            ExistingRow(SAMPLE_CORE_JOB_POSTING, datetime.now(timezone.utc))
         ]
         response = client.post(
-            "/api/jobs/scrape",
-            json={"raw_text": "duplicate of an existing recent posting"},
+            "/api/jobs/scrape", json={"raw_text": "any job text"}
         )
         assert response.status_code == 201
         body = response.json()

@@ -21,8 +21,11 @@ export interface JobScrapeResponse {
 }
 
 export interface JobRequirements {
+  inferred_role?: string | null;
   skills?: string[];
+  recommended_skills?: string[];
   years_of_experience?: number | null;
   education?: string | null;
   other?: string[];
+  recommended_other?: string[];
 }

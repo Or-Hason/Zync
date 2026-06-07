@@ -16,14 +16,23 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 
 class JobRequirements(BaseModel):
-    """Structured requirements extracted from a job post."""
+    """Structured requirements extracted from a job post.
+
+    ``skills`` holds mandatory technical skills; ``recommended_skills`` holds
+    nice-to-have / "a plus" skills kept separate so the UI and scorer can weight
+    them differently. ``inferred_role`` is the model's best-guess role used only
+    when the posting's title is missing or too generic to be useful.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
+    inferred_role: str | None = None
     skills: list[str] = Field(default_factory=list)
+    recommended_skills: list[str] = Field(default_factory=list)
     years_of_experience: int | None = None
     education: str | None = None
     other: list[str] = Field(default_factory=list)
+    recommended_other: list[str] = Field(default_factory=list)
 
 
 class ParsedJob(BaseModel):
@@ -40,6 +49,8 @@ class ParsedJob(BaseModel):
     job_title: str | None = None
     company_description: str | None = None
     job_description: str | None = None
+    core_job_posting: str | None = None
+    content_classification: str | None = None
     requirements: JobRequirements = Field(default_factory=JobRequirements)
     published_at: datetime | None = None
 
@@ -57,6 +68,7 @@ class JobScrapeRequest(BaseModel):
     url: HttpUrl | None = None
     raw_text: str | None = None
     force_score: bool = False
+    existing_job_id: UUID | None = None
 
     @model_validator(mode="after")
     def _require_source(self) -> "JobScrapeRequest":

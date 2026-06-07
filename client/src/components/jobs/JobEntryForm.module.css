@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-width: 500px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -10,6 +11,7 @@
 
 .tabBar {
   display: flex;
+  justify-content: center;
   gap: 0;
   border-bottom: 1px solid var(--color-border);
   margin: -24px -24px 0 -24px;
@@ -43,17 +45,20 @@
 }
 
 .inputWrap {
-  display: flex;
+  display: block;
+  width: 100%;
 }
 
 .input {
+  display: block;
   width: 100%;
-  padding: 12px;
+  box-sizing: border-box;
+  padding: 14px 16px;
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: 14px;
   font-family: inherit;
   outline: none;
   transition: border-color var(--transition);

@@ -7,7 +7,7 @@ const s = en.pages.jobAdd.blacklistModal;
 interface BlacklistBypassModalProps {
   keyword: string;
   onScoreAnyway: (remember: boolean) => void;
-  onDiscard: () => void;
+  onDiscard: (remember: boolean) => void;
 }
 
 /**
@@ -47,7 +47,7 @@ export function BlacklistBypassModal({
         <div className={styles.actions}>
           <button
             className={styles.buttonDiscard}
-            onClick={onDiscard}
+            onClick={(): void => onDiscard(remember)}
             aria-label={s.discard}
           >
             {s.discard}

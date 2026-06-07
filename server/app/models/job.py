@@ -56,6 +56,8 @@ class Job(Base):
     job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     company_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     job_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Normalised raw ingested text, used for AI-independent duplicate detection.
+    raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     requirements: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)

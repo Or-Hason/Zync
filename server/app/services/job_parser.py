@@ -12,19 +12,38 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-from app.schemas.job import JobRequirements, ParsedJob
+import dateparser
 
-# Accepted ``published_at`` formats, tried after a lenient ISO-8601 parse.
-_DATE_FORMATS = (
-    "%Y-%m-%d",
-    "%Y/%m/%d",
-    "%d/%m/%Y",
-    "%m/%d/%Y",
-    "%B %d, %Y",
-    "%b %d, %Y",
-    "%d %B %Y",
-    "%d %b %Y",
+from app.schemas.job import JobRequirements, ParsedJob
+from app.schemas.skeleton import PLACEHOLDER_SCALAR
+
+# Valid values the LLM is instructed to return for content_classification.
+_VALID_CLASSIFICATIONS = frozenset(
+    {"VALID_JOB", "LOGIN_WALL", "IRRELEVANT", "INSUFFICIENT_DATA"}
 )
+
+# Strips trailing "— חובה", "— יתרון", "— יתרון משמעותי" and English equivalents
+# that models append when echoing requirement markers from the source text.
+_SKILL_SUFFIX_RE = re.compile(
+    r"\s*[—–\-]\s*(?:חובה|יתרון(?:\s+\S+)*|required|mandatory|advantage|preferred|a\s+plus)\s*$",
+    re.IGNORECASE,
+)
+
+
+
+def _is_placeholder(text: str) -> bool:
+    """Whether a value is the skeleton placeholder echoed back by the model.
+
+    Smaller local models sometimes copy the schema's ``"string"`` placeholder
+    verbatim instead of extracting a real value; such values must be dropped.
+
+    Args:
+        text: A trimmed candidate string.
+
+    Returns:
+        ``True`` if the value is the placeholder (case-insensitive).
+    """
+    return text.casefold() == PLACEHOLDER_SCALAR.casefold()
 
 
 def _as_str(value: Any) -> str | None:
@@ -34,11 +53,14 @@ def _as_str(value: Any) -> str | None:
         value: Arbitrary value from the model output.
 
     Returns:
-        A non-empty string, or ``None`` for blanks / unsupported types.
+        A non-empty string, or ``None`` for blanks / placeholders / unsupported
+        types.
     """
     if isinstance(value, str):
         trimmed = value.strip()
-        return trimmed or None
+        if not trimmed or _is_placeholder(trimmed):
+            return None
+        return trimmed
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return str(value)
     return None
@@ -52,6 +74,7 @@ def _as_str_list(value: Any) -> list[str]:
 
     Returns:
         A list of cleaned strings (empty if the input is not a usable list).
+        Placeholder echoes are discarded.
     """
     if not isinstance(value, list):
         return []
@@ -59,9 +82,48 @@ def _as_str_list(value: Any) -> list[str]:
     for item in value:
         if isinstance(item, str):
             trimmed = item.strip()
-            if trimmed:
+            if trimmed and not _is_placeholder(trimmed):
                 result.append(trimmed)
     return result
+
+
+def _as_skill_list(value: Any) -> list[str]:
+    """Like :func:`_as_str_list` but additionally strips trailing requirement
+    markers (e.g. '— חובה', '— יתרון', '— advantage') that models echo from
+    the source text.
+
+    Args:
+        value: Arbitrary value from the model output.
+
+    Returns:
+        A list of stripped, non-empty skill strings.
+    """
+    items = _as_str_list(value)
+    cleaned: list[str] = []
+    for item in items:
+        cleaned_item = _SKILL_SUFFIX_RE.sub("", item).strip()
+        if cleaned_item:
+            cleaned.append(cleaned_item)
+    return cleaned
+
+
+def _as_classification(value: Any) -> str | None:
+    """Normalise a content_classification value returned by the model.
+
+    Accepts the four expected uppercase strings (case-insensitive to tolerate
+    minor model formatting drift). Any unrecognised value is discarded.
+
+    Args:
+        value: Arbitrary value from the model output.
+
+    Returns:
+        One of the four valid classification strings, or ``None``.
+    """
+    text = _as_str(value)
+    if not text:
+        return None
+    normalised = text.upper()
+    return normalised if normalised in _VALID_CLASSIFICATIONS else None
 
 
 def _as_int(value: Any) -> int | None:
@@ -91,29 +153,28 @@ def _as_int(value: Any) -> int | None:
 def _parse_published_at(value: Any) -> datetime | None:
     """Parse a model-supplied date string into a timezone-aware datetime.
 
+    Delegates to ``dateparser`` which handles absolute dates in many formats
+    as well as relative expressions in multiple languages (e.g. Hebrew
+    "פורסם לפני 7 שעות", English "3 hours ago").
+
     Args:
         value: Arbitrary value from the model output.
 
     Returns:
-        An aware datetime (UTC assumed when no offset is given), or ``None``
-        when the value is blank or in an unrecognised format.
+        An aware datetime, or ``None`` when the value is blank or unparseable.
     """
     text = _as_str(value)
     if not text:
         return None
 
-    try:
-        parsed = datetime.fromisoformat(text)
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-    except ValueError:
-        pass
-
-    for fmt in _DATE_FORMATS:
-        try:
-            return datetime.strptime(text, fmt).replace(tzinfo=timezone.utc)
-        except ValueError:
-            continue
-    return None
+    return dateparser.parse(
+        text,
+        settings={
+            "RELATIVE_BASE": datetime.now(timezone.utc),
+            "RETURN_AS_TIMEZONE_AWARE": True,
+            "PREFER_DAY_OF_MONTH": "first",
+        },
+    )
 
 
 def _parse_requirements(value: Any) -> JobRequirements:
@@ -127,10 +188,13 @@ def _parse_requirements(value: Any) -> JobRequirements:
     """
     raw = value if isinstance(value, dict) else {}
     return JobRequirements(
-        skills=_as_str_list(raw.get("skills")),
+        inferred_role=_as_str(raw.get("inferred_role")),
+        skills=_as_skill_list(raw.get("skills")),
+        recommended_skills=_as_skill_list(raw.get("recommended_skills")),
         years_of_experience=_as_int(raw.get("years_of_experience")),
         education=_as_str(raw.get("education")),
-        other=_as_str_list(raw.get("other")),
+        other=_as_skill_list(raw.get("other")),
+        recommended_other=_as_skill_list(raw.get("recommended_other")),
     )
 
 
@@ -154,6 +218,8 @@ def sanitize_job_data(raw: dict[str, Any]) -> ParsedJob:
         job_title=_as_str(raw.get("job_title")),
         company_description=_as_str(raw.get("company_description")),
         job_description=_as_str(raw.get("job_description")),
+        core_job_posting=_as_str(raw.get("core_job_posting")),
+        content_classification=_as_classification(raw.get("content_classification")),
         requirements=_parse_requirements(raw.get("requirements")),
         published_at=_parse_published_at(raw.get("published_at")),
     )

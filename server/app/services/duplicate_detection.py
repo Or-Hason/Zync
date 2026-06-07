@@ -1,12 +1,13 @@
-"""Content-based duplicate detection via title-weighted TF-IDF cosine similarity.
+"""Content-based duplicate detection via TF-IDF cosine similarity.
 
-Each job is reduced to a single comparison string of
-``job_title + " " + job_description``. Because the title is present in every
-vector it is naturally weighted into the similarity score without a separate
-weighting term. A new job is compared against recent existing jobs and
-classified with time-decay rules: a strong match against a recent post is a true
-duplicate, while the same match against an old post is flagged only as a
-re-application candidate (not an outright duplicate).
+Comparison runs on each job's normalised *raw ingested text*, not the AI-parsed
+title/description: the local model rephrases its parsed output between runs, so
+comparing parsed text let near-identical postings slip through. Raw text is
+stable for identical input and barely shifts when a couple of incidental lines
+are added/removed, so similarity stays high. A new job is compared against
+recent existing jobs and classified with time-decay rules: a strong match
+against a recent post is a true duplicate, while the same match against an old
+post is flagged only as a re-application candidate (not an outright duplicate).
 """
 
 from __future__ import annotations
@@ -32,9 +33,26 @@ DUPLICATE_CHANCE_FLOOR = 85
 class ExistingJob:
     """Minimal projection of an existing job row used for comparison."""
 
-    job_title: str | None
-    job_description: str | None
+    raw_content: str | None
     created_at: datetime
+    status: str | None = None
+
+
+def normalize_content(text: str | None) -> str:
+    """Normalise raw ingested text for stable similarity comparison.
+
+    Lowercases and collapses all runs of whitespace to single spaces so that
+    incidental line-break / spacing differences do not lower the score.
+
+    Args:
+        text: Raw ingested job text (may be ``None``).
+
+    Returns:
+        The normalised single-line string (empty when input is blank/None).
+    """
+    if not text:
+        return ""
+    return " ".join(text.split()).casefold()
 
 
 @dataclass(frozen=True)
@@ -43,6 +61,7 @@ class DuplicateAssessment:
 
     is_duplicate: bool
     duplicate_chance: int
+    matched_job_status: str | None = None
 
 
 def _is_recent(created_at: datetime | None, now: datetime) -> bool:
@@ -63,8 +82,7 @@ def _is_recent(created_at: datetime | None, now: datetime) -> bool:
 
 
 def detect_duplicate(
-    new_title: str | None,
-    new_description: str | None,
+    new_raw_content: str | None,
     existing: list[ExistingJob],
     *,
     now: datetime | None = None,
@@ -72,9 +90,8 @@ def detect_duplicate(
     """Classify a candidate job against existing jobs with time-decay rules.
 
     Args:
-        new_title: Candidate job title.
-        new_description: Candidate job description.
-        existing: Existing jobs to compare against (title, description, date).
+        new_raw_content: Candidate job's raw ingested text.
+        existing: Existing jobs to compare against (raw content, date).
         now: Optional reference timestamp (defaults to current UTC time).
 
     Returns:
@@ -83,25 +100,30 @@ def detect_duplicate(
     """
     now = now or datetime.now(timezone.utc)
 
-    candidate = comparison_string(new_title, new_description)
+    candidate = normalize_content(new_raw_content)
     corpus = [
-        (comparison_string(job.job_title, job.job_description), job.created_at)
+        (normalize_content(job.raw_content), job.created_at, job.status)
         for job in existing
     ]
-    corpus = [(text, created_at) for text, created_at in corpus if text]
+    corpus = [(text, created_at, status) for text, created_at, status in corpus if text]
 
     if not candidate or not corpus:
         return DuplicateAssessment(is_duplicate=False, duplicate_chance=0)
 
-    match = best_match(candidate, [text for text, _ in corpus])
+    match = best_match(candidate, [text for text, _, _ in corpus])
     if match is None or match.score <= SIMILARITY_THRESHOLD:
         return DuplicateAssessment(is_duplicate=False, duplicate_chance=0)
 
-    best_created_at = corpus[match.index][1]
+    best_created_at, best_status = corpus[match.index][1], corpus[match.index][2]
     chance = round(match.score * 100)
     if _is_recent(best_created_at, now):
         return DuplicateAssessment(
             is_duplicate=True,
             duplicate_chance=max(DUPLICATE_CHANCE_FLOOR, chance),
+            matched_job_status=best_status,
         )
-    return DuplicateAssessment(is_duplicate=False, duplicate_chance=chance)
+    return DuplicateAssessment(
+        is_duplicate=False,
+        duplicate_chance=chance,
+        matched_job_status=best_status,
+    )

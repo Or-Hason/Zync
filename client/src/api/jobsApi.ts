@@ -7,6 +7,7 @@ export interface ScrapeRequest {
   url?: string;
   raw_text?: string;
   force_score?: boolean;
+  existing_job_id?: string;
 }
 
 export interface ScrapeError {

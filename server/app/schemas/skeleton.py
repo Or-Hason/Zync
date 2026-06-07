@@ -13,6 +13,11 @@ from typing import Any, Union, get_args, get_origin
 
 from pydantic import BaseModel
 
+# Placeholder emitted for every scalar field in a generated skeleton. Exported so
+# the parser can recognise and discard values where a model echoed the
+# placeholder back verbatim instead of extracting a real value.
+PLACEHOLDER_SCALAR = "string"
+
 
 def annotation_skeleton(annotation: Any) -> Any:
     """Build a JSON skeleton describing a single field annotation.
@@ -33,7 +38,7 @@ def annotation_skeleton(annotation: Any) -> Any:
 
     if origin in (list, set, tuple):
         inner_args = get_args(annotation)
-        inner = annotation_skeleton(inner_args[0]) if inner_args else "string"
+        inner = annotation_skeleton(inner_args[0]) if inner_args else PLACEHOLDER_SCALAR
         return [inner]
 
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
@@ -42,7 +47,7 @@ def annotation_skeleton(annotation: Any) -> Any:
             for name, field in annotation.model_fields.items()
         }
 
-    return "string"
+    return PLACEHOLDER_SCALAR
 
 
 def build_model_skeleton(model: type[BaseModel]) -> dict[str, Any]:

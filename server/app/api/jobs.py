@@ -23,13 +23,19 @@ from app.schemas.job import (
     JobRead,
     JobScrapeRequest,
     JobScrapeResponse,
+    ParsedJob,
     ScoreResult,
 )
 from app.services.blacklist_filter import find_blacklist_hit
 from app.services.duplicate_detection import detect_duplicate
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_parser import sanitize_job_data
-from app.services.job_repository import load_existing_jobs, load_scored_jobs, new_job
+from app.services.job_repository import (
+    load_existing_jobs,
+    load_scored_jobs,
+    new_job,
+    update_job_with_score,
+)
 from app.services.job_scraper import (
     ContentTooLargeError,
     JobFetchError,
@@ -49,6 +55,26 @@ logger = logging.getLogger(__name__)
 _NO_ACTIVE_RESUME_MESSAGE = (
     "No active resume selected. Please upload or select a resume to enable scoring."
 )
+
+# Per-classification error codes and user-facing messages returned as HTTP 422.
+# None is excluded — an unclassified response is treated as VALID_JOB (lenient).
+_CLASSIFICATION_ERRORS: dict[str, tuple[str, str]] = {
+    "LOGIN_WALL": (
+        "login_wall",
+        "This page appears to require a login to view. "
+        "Try copying the job posting text and pasting it directly.",
+    ),
+    "IRRELEVANT": (
+        "irrelevant_content",
+        "No relevant job details were found in this text. "
+        "Please check the content and try a different job posting.",
+    ),
+    "INSUFFICIENT_DATA": (
+        "insufficient_data",
+        "The job posting lacks enough details to analyse. "
+        "Try including the full job description with requirements and responsibilities.",
+    ),
+}
 
 
 @router.post(
@@ -75,58 +101,87 @@ async def scrape_job(
     content = await _resolve_content(payload)
 
     parsed = sanitize_job_data(await ollama.parse_job(content))
+
+    # Reliable fallback: use raw content when the model omits core_job_posting.
+    if not parsed.core_job_posting:
+        parsed.core_job_posting = content
+
+    # ── Classification gate: halt before any DB write on junk input ─────────────
+    rejection = _classification_rejection(parsed)
+    if rejection is not None:
+        logger.info(
+            "Rejected job by content classification",
+            extra={"classification": parsed.content_classification},
+        )
+        return rejection
+
+    # Fallback: use inferred_role as title when the posting has no explicit title.
+    if not parsed.job_title:
+        parsed.job_title = parsed.requirements.inferred_role or "Unknown Title"
+
     existing = await load_existing_jobs(db)
-    assessment = detect_duplicate(parsed.job_title, parsed.job_description, existing)
+    assessment = detect_duplicate(parsed.core_job_posting, existing)
     source_url = str(payload.url) if payload.url else None
-
-    # ── Blacklist filtration (scans title + description only) ─────────────────
-    keyword = find_blacklist_hit(
-        parsed.job_title, parsed.job_description, await store.get_blacklist()
-    )
-    if keyword and not payload.force_score:
-        job = new_job(
-            parsed,
-            source_url=source_url,
-            assessment=assessment,
-            status="auto_rejected",
-        )
-        await _persist(db, job)
-        return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            content={
-                "error": "blacklist_hit",
-                "matched_keyword": keyword,
-                "job": jsonable_encoder(JobRead.model_validate(job)),
-            },
-        )
-
-    # ── No-active-resume guard ────────────────────────────────────────────────
-    active_resume = await load_active_resume(db)
-    if active_resume is None:
-        job = new_job(
-            parsed,
-            source_url=source_url,
-            assessment=assessment,
-            status="not_applied",
-        )
-        await _persist(db, job)
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": "no_active_resume",
-                "message": _NO_ACTIVE_RESUME_MESSAGE,
-                "job": jsonable_encoder(JobRead.model_validate(job)),
-            },
-        )
-
-    # ── Score: cache hit, else Gemini ─────────────────────────────────────────
     candidate_text = comparison_string(parsed.job_title, parsed.job_description)
-    scored_jobs = await load_scored_jobs(db, active_resume.id)
-    cached = find_cached_score(candidate_text, scored_jobs)
-    if cached is not None:
-        score: ScoreResult | None = cached
-        score_cached = True
-    else:
+
+    # ── Active resume + cache check (runs before blacklist) ───────────────────
+    # If a near-identical job was already scored against the current resume, the
+    # user has implicitly accepted it; return the cached result immediately so
+    # they are never prompted about the blacklist for something already evaluated.
+    active_resume = await load_active_resume(db)
+    score: ScoreResult | None = None
+    score_cached = False
+
+    if active_resume is not None:
+        scored_jobs = await load_scored_jobs(db, active_resume.id)
+        cached = find_cached_score(candidate_text, scored_jobs)
+        if cached is not None:
+            score = cached
+            score_cached = True
+
+    # ── Blacklist + Gemini (skipped entirely on a cache hit) ──────────────────
+    if not score_cached:
+        keyword = find_blacklist_hit(
+            parsed.job_title, parsed.job_description, await store.get_blacklist()
+        )
+        if keyword and not payload.force_score:
+            job = new_job(
+                parsed,
+                raw_content=parsed.core_job_posting,
+                source_url=source_url,
+                assessment=assessment,
+                status="auto_rejected",
+            )
+            await _persist(db, job)
+            return JSONResponse(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                content={
+                    "error": "blacklist_hit",
+                    "matched_keyword": keyword,
+                    "job": jsonable_encoder(JobRead.model_validate(job)),
+                },
+            )
+
+        # ── No-active-resume guard ────────────────────────────────────────────
+        if active_resume is None:
+            job = new_job(
+                parsed,
+                raw_content=parsed.core_job_posting,
+                source_url=source_url,
+                assessment=assessment,
+                status="not_applied",
+            )
+            await _persist(db, job)
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": "no_active_resume",
+                    "message": _NO_ACTIVE_RESUME_MESSAGE,
+                    "job": jsonable_encoder(JobRead.model_validate(job)),
+                },
+            )
+
+        # ── Gemini scoring ────────────────────────────────────────────────────
         if not gemini.is_configured:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -138,7 +193,6 @@ async def scrape_job(
             parsed.requirements.model_dump(),
             active_resume.structured_data,
         )
-        score_cached = False
 
     # ── Persist with score, auto-reject low matches, and advise ──────────────
     if score is not None:
@@ -148,7 +202,7 @@ async def scrape_job(
             "matched_skills": score.matched_skills,
             "missing_skills": score.missing_skills,
         }
-        scored_by = active_resume.id
+        scored_by = active_resume.id if active_resume else None
         job_status = (
             "auto_rejected" if match_score < LOW_SCORE_THRESHOLD else "not_applied"
         )
@@ -162,24 +216,77 @@ async def scrape_job(
         match_score=match_score,
         is_duplicate=assessment.is_duplicate,
         duplicate_chance=assessment.duplicate_chance,
+        matched_job_status=assessment.matched_job_status,
     )
 
-    job = new_job(
-        parsed,
-        source_url=source_url,
-        assessment=assessment,
-        status=job_status,
-        match_score=match_score,
-        score_details=score_details,
-        scored_by_resume_id=scored_by,
-    )
-    await _persist(db, job)
+    # When the user bypasses a blacklist hit the first request already persisted
+    # an auto_rejected row.  Update that row instead of creating a duplicate.
+    if payload.existing_job_id is not None:
+        job = await update_job_with_score(
+            db,
+            payload.existing_job_id,
+            match_score=match_score,
+            score_details=score_details,
+            scored_by_resume_id=scored_by,
+            status=job_status,
+        )
+        if job is None:
+            job = new_job(
+                parsed,
+                raw_content=parsed.core_job_posting,
+                source_url=source_url,
+                assessment=assessment,
+                status=job_status,
+                match_score=match_score,
+                score_details=score_details,
+                scored_by_resume_id=scored_by,
+            )
+            await _persist(db, job)
+    else:
+        job = new_job(
+            parsed,
+            raw_content=parsed.core_job_posting,
+            source_url=source_url,
+            assessment=assessment,
+            status=job_status,
+            match_score=match_score,
+            score_details=score_details,
+            scored_by_resume_id=scored_by,
+        )
+        await _persist(db, job)
 
     logger.info(
         "Job scored and stored",
         extra={"job_id": str(job.id), "source_type": job.source_type},
     )
     return _build_response(job, score, advice, score_cached)
+
+
+def _classification_rejection(parsed: ParsedJob) -> JSONResponse | None:
+    """Return a 422 JSONResponse when the LLM flags the input as non-job content.
+
+    An unclassified response (``None``) is treated as valid to keep the gate
+    lenient when the model omits the field. Only explicit non-VALID_JOB values
+    halt the pipeline.
+
+    Args:
+        parsed: The sanitised parsed job.
+
+    Returns:
+        A :class:`JSONResponse` (HTTP 422) for rejected classifications, or
+        ``None`` when the pipeline should continue.
+    """
+    classification = parsed.content_classification
+    if classification is None or classification == "VALID_JOB":
+        return None
+    error_code, message = _CLASSIFICATION_ERRORS.get(
+        classification,
+        ("irrelevant_content", "No relevant job details were found."),
+    )
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        content={"error": error_code, "message": message},
+    )
 
 
 def _build_response(

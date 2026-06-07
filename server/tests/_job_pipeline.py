@@ -24,13 +24,34 @@ from app.services.gemini_client import get_gemini_client
 from app.services.ollama_client import get_ollama_client
 from app.services.settings_store import get_settings_store
 
+# Kept >= _MIN_DESCRIPTION_LENGTH (100) chars so the sufficiency guard in the
+# scrape endpoint admits the stubbed job; the leading sentence is reused by the
+# privacy test to assert it is never logged.
+SAMPLE_JOB_DESCRIPTION = (
+    "Own the async FastAPI platform and PostgreSQL layer. You will design JSONB "
+    "schemas, build scraping pipelines, and mentor engineers across the team."
+)
+
+# Verbatim core posting content used by duplicate detection (mirrors what
+# core_job_posting would contain after AI extraction).
+SAMPLE_CORE_JOB_POSTING = (
+    "Senior Python Engineer\n\n"
+    "Own the async FastAPI platform and PostgreSQL layer. Design JSONB schemas, "
+    "build scraping pipelines, and mentor engineers across the team.\n\n"
+    "Requirements: Python, FastAPI, 5+ years experience."
+)
+
 SAMPLE_JOB_RAW: dict[str, Any] = {
     "company_name": "Acme Corp",
     "job_title": "Senior Python Engineer",
     "company_description": "We ship logistics software.",
-    "job_description": "Own the async FastAPI platform and PostgreSQL layer.",
+    "job_description": SAMPLE_JOB_DESCRIPTION,
+    "core_job_posting": SAMPLE_CORE_JOB_POSTING,
+    "content_classification": "VALID_JOB",
     "requirements": {
+        "inferred_role": None,
         "skills": ["Python", "FastAPI"],
+        "recommended_skills": ["Go"],
         "years_of_experience": 5,
         "education": "B.Sc.",
         "other": [],
@@ -53,12 +74,14 @@ class _Result:
 
 
 class ExistingRow:
-    """Projection row for the duplicate-scan query."""
+    """Projection row for the duplicate-scan query (raw-content comparison)."""
 
-    def __init__(self, title: str, description: str, created_at: datetime) -> None:
-        self.job_title = title
-        self.job_description = description
+    def __init__(
+        self, raw_content: str, created_at: datetime, status: str = "not_applied"
+    ) -> None:
+        self.raw_content = raw_content
         self.created_at = created_at
+        self.status = status
 
 
 class ScoredRow:
@@ -92,8 +115,8 @@ class FakeJobSession:
     async def refresh(self, obj: Job) -> None:
         _ensure_created_at(obj)
 
-    async def get(self, _model: type, _pk: Any) -> None:
-        return None
+    async def get(self, _model: type, pk: Any) -> Any:
+        return next((j for j in self.added if j.id == pk), None)
 
     async def execute(self, stmt: Any) -> _Result:
         names = [desc.get("name") for desc in stmt.column_descriptions]
@@ -144,8 +167,8 @@ class FakeGemini:
     async def score(
         self,
         job_title: str | None,
-        job_description: str | None,
-        requirements: dict | None,
+        _job_description: str | None,
+        _requirements: dict | None,
         resume_structured: dict | None,
     ) -> ScoreResult | None:
         self.calls.append((job_title, resume_structured))

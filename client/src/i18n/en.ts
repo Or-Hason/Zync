@@ -123,10 +123,11 @@ export const en = {
         scoring: "Scoring your match…",
       },
       jobCard: {
-        notScored: "Not scored",
-        scoreYellow: "Moderate match",
-        scoreGreen: "Strong match",
-        scoreRed: "Poor match",
+        adviceLabel: "System Advice",
+        scoreMatchLabel: "MATCH",
+        notScored: "N/A",
+        notScoredLabel: "NOT SCORED",
+        inferredRolePrefix: "Likely role:",
         statusAutoRejected: "Auto Rejected",
         statusNotApplied: "Not Applied",
         duplicateWarning: "Similar job found",
@@ -135,11 +136,14 @@ export const en = {
         missingSkills: "Missing Skills",
         rationale: "Match Analysis",
         requirementsLabel: "Requirements",
+        requiredGroup: "Required",
+        recommendedGroup: "Recommended (Nice to Have)",
+        skillsLabel: "Skills",
+        other: "Other",
         publishedLabel: "Posted",
         publishedUnknown: "Unknown",
         yearsOfExperience: "Years of Experience",
         education: "Education",
-        other: "Other",
       },
       noActiveResume: {
         prompt: "No resume selected. Upload or select a resume to get a match score.",
@@ -156,6 +160,15 @@ export const en = {
       blacklistToasts: {
         rejected: "Job rejected: blacklist match found.",
         preferenceSaved: "Preference saved. You can change this later in Settings.",
+      },
+      errors: {
+        loginWall:
+          "This page appears to require a login to view. Try copying the job posting text and pasting it directly.",
+        irrelevantContent:
+          "No relevant job details were found in this text. Please check the content and try a different job posting.",
+        insufficientData:
+          "The job posting lacks enough details to analyse. Try including the full job description with requirements and responsibilities.",
+        fetchFailed: "Could not fetch that URL. Try pasting the job text instead.",
       },
       activeResumeSelector: {
         label: "Active Resume:",

@@ -1,9 +1,13 @@
-.headerRight {
-  margin-top: 12px;
+.resumeSelectorWrap {
+  display: flex;
+  justify-content: center;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .formContainer {
-  max-width: 720px;
+  max-width: 900px;
   margin: 0 auto;
 }
 
@@ -18,6 +22,8 @@
   border-radius: var(--radius-lg);
   padding: 60px 24px;
   color: var(--color-text-muted);
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .spinner {
@@ -40,7 +46,7 @@
 }
 
 .cardContainer {
-  max-width: 720px;
+  max-width: 900px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
