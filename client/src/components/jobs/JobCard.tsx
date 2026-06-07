@@ -2,28 +2,14 @@ import { useActiveResume } from "@/api/resumeApi";
 import { useCheckCachedScore } from "@/api/jobsApi";
 import { en } from "@/i18n/en";
 import type { JobScrapeResponse } from "@/types/job";
+import { JobCardBanner, type BannerStyle } from "./JobCardBanner";
 import { RequirementsSection } from "./RequirementsSection";
 import { ScorePlaceholder } from "./ScorePlaceholder";
 import styles from "./JobCard.module.css";
 
 const s = en.pages.jobAdd.jobCard;
 
-type BannerStyle = "success" | "warning" | "error" | "info";
 type ScoreColor = "green" | "yellow" | "red" | "neutral";
-
-const BANNER_CLASS: Record<BannerStyle, string> = {
-  success: styles.bannerSuccess,
-  warning: styles.bannerWarning,
-  error: styles.bannerError,
-  info: styles.bannerInfo,
-};
-
-const BANNER_ICON: Record<BannerStyle, string> = {
-  success: "✓",
-  warning: "⚠",
-  error: "✕",
-  info: "ℹ",
-};
 
 const SCORE_CLASS: Record<ScoreColor, string> = {
   green: styles.scoreBadgeGreen,
@@ -162,19 +148,7 @@ export function JobCard({
   return (
     <div className={styles.card}>
       {bannerText && (
-        <div
-          className={`${styles.banner} ${BANNER_CLASS[bannerStyle]}`}
-          role="status"
-          aria-live="polite"
-        >
-          <span className={styles.bannerIcon} aria-hidden="true">
-            {BANNER_ICON[bannerStyle]}
-          </span>
-          <span className={styles.bannerBody}>
-            <span className={styles.bannerLabel}>{s.adviceLabel}</span>
-            <span className={styles.bannerText}>{bannerText}</span>
-          </span>
-        </div>
+        <JobCardBanner text={bannerText} style={bannerStyle} adviceLabel={s.adviceLabel} />
       )}
 
       <div className={styles.header}>

@@ -18,32 +18,22 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api._job_pipeline_helpers import (
+    NO_ACTIVE_RESUME_MESSAGE,
+    build_scrape_response,
+    classification_rejection,
+    persist_job,
+    resolve_content,
+)
 from app.api.resumes_active import load_active_resume
 from app.db.session import get_db
 from app.models.job import Job
-from app.schemas.job import (
-    JobRead,
-    JobScrapeRequest,
-    JobScrapeResponse,
-    ParsedJob,
-    ScoreResult,
-)
+from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse
 from app.services.blacklist_filter import find_blacklist_hit
 from app.services.duplicate_detection import detect_duplicate, DuplicateAssessment
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_parser import sanitize_job_data
-from app.services.job_repository import (
-    load_existing_jobs,
-    load_scored_jobs,
-    new_job,
-)
-from app.services.job_scraper import (
-    ContentTooLargeError,
-    JobFetchError,
-    enforce_content_size,
-    extract_content,
-    fetch_html,
-)
+from app.services.job_repository import load_existing_jobs, load_scored_jobs, new_job
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.score_cache import find_cached_score, find_cached_score_raw
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -52,30 +42,6 @@ from app.services.text_similarity import comparison_string
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 logger = logging.getLogger(__name__)
-
-_NO_ACTIVE_RESUME_MESSAGE = (
-    "No active resume selected. Please upload or select a resume to enable scoring."
-)
-
-# Per-classification error codes and user-facing messages returned as HTTP 422.
-# None is excluded — an unclassified response is treated as VALID_JOB (lenient).
-_CLASSIFICATION_ERRORS: dict[str, tuple[str, str]] = {
-    "LOGIN_WALL": (
-        "login_wall",
-        "This page appears to require a login to view. "
-        "Try copying the job posting text and pasting it directly.",
-    ),
-    "IRRELEVANT": (
-        "irrelevant_content",
-        "No relevant job details were found in this text. "
-        "Please check the content and try a different job posting.",
-    ),
-    "INSUFFICIENT_DATA": (
-        "insufficient_data",
-        "The job posting lacks enough details to analyse. "
-        "Try including the full job description with requirements and responsibilities.",
-    ),
-}
 
 
 @router.post(
@@ -99,7 +65,7 @@ async def scrape_job(
         (``force_score`` false); HTTP 400 when no active resume exists.
         502/422 on fetch/size errors; 500 if Gemini is not configured.
     """
-    content = await _resolve_content(payload)
+    content = await resolve_content(payload)
 
     parsed = sanitize_job_data(await ollama.parse_job(content))
 
@@ -108,7 +74,7 @@ async def scrape_job(
         parsed.core_job_posting = content
 
     # ── Classification gate: halt before any DB write on junk input ──────────
-    rejection = _classification_rejection(parsed)
+    rejection = classification_rejection(parsed)
     if rejection is not None:
         logger.info(
             "Rejected job by content classification",
@@ -165,12 +131,12 @@ async def scrape_job(
                 score_details=cached_score_details,
                 scored_by_resume_id=active_resume.id,
             )
-            await _persist(db, job)
+            await persist_job(db, job)
             logger.info(
                 "Score cache hit — inserted new row",
                 extra={"job_id": str(job.id), "source_type": job.source_type},
             )
-            return _build_response(job, cached, cached_advice, score_cached=True)
+            return build_scrape_response(job, cached, cached_advice, score_cached=True)
 
     # ── Blacklist check ───────────────────────────────────────────────────────
     keyword = find_blacklist_hit(
@@ -184,7 +150,7 @@ async def scrape_job(
             assessment=assessment,
             status="auto_rejected",
         )
-        await _persist(db, job)
+        await persist_job(db, job)
         return JSONResponse(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             content={
@@ -205,7 +171,7 @@ async def scrape_job(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     content={
                         "error": "no_active_resume",
-                        "message": _NO_ACTIVE_RESUME_MESSAGE,
+                        "message": NO_ACTIVE_RESUME_MESSAGE,
                         "job": jsonable_encoder(JobRead.model_validate(existing_row)),
                     },
                 )
@@ -216,12 +182,12 @@ async def scrape_job(
             assessment=assessment,
             status="not_applied",
         )
-        await _persist(db, job)
+        await persist_job(db, job)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
             content={
                 "error": "no_active_resume",
-                "message": _NO_ACTIVE_RESUME_MESSAGE,
+                "message": NO_ACTIVE_RESUME_MESSAGE,
                 "job": jsonable_encoder(JobRead.model_validate(job)),
             },
         )
@@ -232,7 +198,7 @@ async def scrape_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gemini API key is not configured.",
         )
-    score: ScoreResult | None = await gemini.score(
+    score = await gemini.score(
         parsed.job_title,
         parsed.job_description,
         parsed.requirements.model_dump(),
@@ -275,72 +241,13 @@ async def scrape_job(
         score_details=score_details,
         scored_by_resume_id=scored_by,
     )
-    await _persist(db, job)
+    await persist_job(db, job)
 
     logger.info(
         "Job scored and stored",
         extra={"job_id": str(job.id), "source_type": job.source_type},
     )
-    return _build_response(job, score, advice, score_cached=False)
-
-
-def _classification_rejection(parsed: ParsedJob) -> JSONResponse | None:
-    """Return a 422 JSONResponse when the LLM flags the input as non-job content.
-
-    An unclassified response (``None``) is treated as valid to keep the gate
-    lenient when the model omits the field. Only explicit non-VALID_JOB values
-    halt the pipeline.
-
-    Args:
-        parsed: The sanitised parsed job.
-
-    Returns:
-        A :class:`JSONResponse` (HTTP 422) for rejected classifications, or
-        ``None`` when the pipeline should continue.
-    """
-    classification = parsed.content_classification
-    if classification is None or classification == "VALID_JOB":
-        return None
-    error_code, message = _CLASSIFICATION_ERRORS.get(
-        classification,
-        ("irrelevant_content", "No relevant job details were found."),
-    )
-    return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"error": error_code, "message": message},
-    )
-
-
-def _build_response(
-    job: Job, score: ScoreResult | None, advice: str, score_cached: bool
-) -> JobScrapeResponse:
-    """Assemble the full scrape+score response payload.
-
-    Args:
-        job: The persisted job row.
-        score: The score result (or ``None`` when scoring failed).
-        advice: The generated ``system_advice`` string.
-        score_cached: Whether the score was reused from cache.
-
-    Returns:
-        The :class:`JobScrapeResponse`.
-    """
-    base = JobRead.model_validate(job).model_dump()
-    return JobScrapeResponse(
-        **base,
-        rationale=score.rationale if score else None,
-        matched_skills=score.matched_skills if score else [],
-        missing_skills=score.missing_skills if score else [],
-        system_advice=advice,
-        score_cached=score_cached,
-    )
-
-
-async def _persist(db: AsyncSession, job: Job) -> None:
-    """Add, flush, and refresh a job row so server defaults are populated."""
-    db.add(job)
-    await db.flush()
-    await db.refresh(job)
+    return build_scrape_response(job, score, advice, score_cached=False)
 
 
 @router.get(
@@ -390,34 +297,3 @@ async def get_cached_score(
             "missing_skills": cached.missing_skills,
         },
     )
-
-
-async def _resolve_content(payload: JobScrapeRequest) -> str:
-    """Resolve the job text from either the URL or the raw_text source.
-
-    Args:
-        payload: The validated scrape request.
-
-    Returns:
-        The extracted, size-checked job text.
-
-    Raises:
-        HTTPException: 502 on fetch failure; 422 on oversized content.
-    """
-    try:
-        if payload.url is not None:
-            return extract_content(await fetch_html(str(payload.url)))
-
-        content = (payload.raw_text or "").strip()
-        enforce_content_size(content)
-        return content
-    except JobFetchError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Could not fetch the provided job URL.",
-        ) from exc
-    except ContentTooLargeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(exc),
-        ) from exc

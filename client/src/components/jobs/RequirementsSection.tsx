@@ -1,14 +1,15 @@
 import { en } from "@/i18n/en";
 import type { JobRequirements } from "@/types/job";
-import styles from "./JobCard.module.css";
+import cardStyles from "./JobCard.module.css";
+import reqStyles from "./RequirementsSection.module.css";
 
 const s = en.pages.jobAdd.jobCard;
 
 function SkillTags({ items }: { items: string[] }): React.JSX.Element {
   return (
-    <div className={styles.skillsList}>
+    <div className={cardStyles.skillsList}>
       {items.map((skill) => (
-        <span key={skill} className={`${styles.skill} ${styles.skillRequired}`}>
+        <span key={skill} className={`${cardStyles.skill} ${reqStyles.skillRequired}`}>
           {skill}
         </span>
       ))}
@@ -37,22 +38,22 @@ export function RequirementsSection({ requirements }: RequirementsSectionProps):
   if (!hasRequired && !hasRecommended && !hasMeta) return <></>;
 
   return (
-    <section className={styles.section}>
-      <h3 className={styles.sectionTitle}>{s.requirementsLabel}</h3>
-      <div className={styles.reqList}>
+    <section className={cardStyles.section}>
+      <h3 className={cardStyles.sectionTitle}>{s.requirementsLabel}</h3>
+      <div className={reqStyles.reqList}>
         {hasRequired && (
-          <div className={styles.reqGroup}>
-            <span className={styles.reqGroupTitle}>{s.requiredGroup}</span>
+          <div className={reqStyles.reqGroup}>
+            <span className={reqStyles.reqGroupTitle}>{s.requiredGroup}</span>
             {skills && skills.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.skillsLabel}:</span>
+              <div className={reqStyles.reqItem}>
+                <span className={reqStyles.reqLabel}>{s.skillsLabel}:</span>
                 <SkillTags items={skills} />
               </div>
             )}
             {other && other.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.other}:</span>
-                <ul className={styles.otherList}>
+              <div className={reqStyles.reqItem}>
+                <span className={reqStyles.reqLabel}>{s.other}:</span>
+                <ul className={reqStyles.otherList}>
                   {other.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -63,18 +64,18 @@ export function RequirementsSection({ requirements }: RequirementsSectionProps):
         )}
 
         {hasRecommended && (
-          <div className={styles.reqGroup}>
-            <span className={styles.reqGroupTitle}>{s.recommendedGroup}</span>
+          <div className={reqStyles.reqGroup}>
+            <span className={reqStyles.reqGroupTitle}>{s.recommendedGroup}</span>
             {recommended_skills && recommended_skills.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.skillsLabel}:</span>
+              <div className={reqStyles.reqItem}>
+                <span className={reqStyles.reqLabel}>{s.skillsLabel}:</span>
                 <SkillTags items={recommended_skills} />
               </div>
             )}
             {recommended_other && recommended_other.length > 0 && (
-              <div className={styles.reqItem}>
-                <span className={styles.reqLabel}>{s.other}:</span>
-                <ul className={styles.otherList}>
+              <div className={reqStyles.reqItem}>
+                <span className={reqStyles.reqLabel}>{s.other}:</span>
+                <ul className={reqStyles.otherList}>
                   {recommended_other.map((item, idx) => (
                     <li key={idx}>{item}</li>
                   ))}
@@ -85,15 +86,15 @@ export function RequirementsSection({ requirements }: RequirementsSectionProps):
         )}
 
         {years_of_experience != null && (
-          <div className={styles.reqItem}>
-            <span className={styles.reqLabel}>{s.yearsOfExperience}:</span>
+          <div className={reqStyles.reqItem}>
+            <span className={reqStyles.reqLabel}>{s.yearsOfExperience}:</span>
             <span>{years_of_experience} years</span>
           </div>
         )}
 
         {education && (
-          <div className={styles.reqItem}>
-            <span className={styles.reqLabel}>{s.education}:</span>
+          <div className={reqStyles.reqItem}>
+            <span className={reqStyles.reqLabel}>{s.education}:</span>
             <span>{education}</span>
           </div>
         )}
