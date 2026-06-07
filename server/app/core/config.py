@@ -31,6 +31,13 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3:8b"
     ollama_timeout_seconds: float = 120.0
 
+    # ── Gemini (cloud AI inference for match scoring) ─────────────────────────
+    # Loaded from the environment; never hardcoded or logged. Empty when unset,
+    # in which case the scoring endpoint aborts with HTTP 500.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash"
+    gemini_timeout_seconds: float = 30.0
+
     # ── Resume uploads ────────────────────────────────────────────────────────
     # Directory (relative paths are resolved against the server working dir).
     upload_dir: str = "uploads"

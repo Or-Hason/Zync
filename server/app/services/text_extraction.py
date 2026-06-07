@@ -86,7 +86,9 @@ def detect_file_kind(data: bytes) -> FileKind:
     if detected_mime in _DOCX_CANDIDATE_MIMES and _looks_like_docx(data):
         return "docx"
 
-    logger.warning("Rejected upload with disallowed MIME", extra={"mime": detected_mime})
+    logger.warning(
+        "Rejected upload with disallowed MIME", extra={"mime": detected_mime}
+    )
     raise UnsupportedFileTypeError(detected_mime)
 
 

@@ -9,9 +9,10 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { to: "/",        label: en.nav.dashboard,      ariaLabel: "Navigate to Dashboard" },
-  { to: "/resumes", label: en.nav.resumeManager,  ariaLabel: "Navigate to Resume Manager" },
-  { to: "/settings",label: en.nav.settings,       ariaLabel: "Navigate to Settings" },
+  { to: "/",         label: en.nav.dashboard,     ariaLabel: "Navigate to Dashboard" },
+  { to: "/jobs/add", label: en.nav.addJob,        ariaLabel: "Navigate to Add Job" },
+  { to: "/resumes",  label: en.nav.resumeManager, ariaLabel: "Navigate to Resume Manager" },
+  { to: "/settings", label: en.nav.settings,      ariaLabel: "Navigate to Settings" },
 ];
 
 /** Persistent left-side navigation sidebar. */

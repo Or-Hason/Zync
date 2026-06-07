@@ -1,0 +1,259 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.header {
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerMain {
+  flex: 1;
+}
+
+.title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.4px;
+  line-height: 1.25;
+}
+
+.role {
+  margin: 6px 0 0 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accent);
+}
+
+.rolePrefix {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.75;
+}
+
+.company {
+  margin: 4px 0 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.badges {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.scoreBadge {
+  width: 88px;
+  height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.22);
+}
+
+.scoreValue {
+  font-size: 38px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -1px;
+}
+
+.scoreLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  opacity: 0.92;
+}
+
+.scoreBadgeGreen {
+  background: linear-gradient(135deg, #54c48f 0%, #3d8c66 100%);
+}
+
+.scoreBadgeYellow {
+  background: linear-gradient(135deg, #f0b94a 0%, #d99a2e 100%);
+  color: #2a2000;
+}
+
+.scoreBadgeRed {
+  background: linear-gradient(135deg, #ec6675 0%, #c93d4c 100%);
+}
+
+.scoreBadgeNeutral {
+  background: linear-gradient(135deg, #8a8a93 0%, #5e5e66 100%);
+}
+
+.statusBadge {
+  padding: 6px 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Duplicate Warning ────────────────────────────────────────────────────── */
+
+.duplicateWarning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 16px 24px 0 24px;
+  padding: 12px 16px;
+  background: rgba(230, 169, 53, 0.08);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  color: var(--color-warning);
+  font-size: 13px;
+}
+
+.duplicateIcon {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.duplicateText {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.duplicateChanceText {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+
+.section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+
+.description {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.meta {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.metaLabel {
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.rationale {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--color-text);
+  font-style: italic;
+}
+
+/* ── Skills Lists ────────────────────────────────────────────────────────── */
+
+.skillsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.skillMatched {
+  background: rgba(76, 175, 130, 0.15);
+  border: 1px solid var(--color-success);
+  color: var(--color-success);
+}
+
+.skillMissing {
+  background: rgba(224, 92, 106, 0.15);
+  border: 1px solid var(--color-error);
+  color: var(--color-error);
+}
+
+/* ── Re-scoring indicator (auto-triggered while active resume changes score) ── */
+
+.rescoringIndicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 24px 0 24px;
+  padding: 10px 14px;
+  background: rgba(124, 106, 245, 0.07);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.miniSpinner {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

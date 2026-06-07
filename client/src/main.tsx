@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { DashboardPage } from "./pages/DashboardPage";
+import { JobAddPage } from "./pages/JobAddPage";
 import { ResumeManagerPage } from "./pages/ResumeManagerPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { en } from "./i18n/en";
@@ -28,8 +29,9 @@ const router = createBrowserRouter([
   {
     element: <App />,
     children: [
-      { path: "/",         element: <DashboardPage /> },
-      { path: "/resumes",  element: <ResumeManagerPage /> },
+      { path: "/",        element: <DashboardPage /> },
+      { path: "/jobs/add", element: <JobAddPage /> },
+      { path: "/resumes", element: <ResumeManagerPage /> },
       { path: "/settings", element: <SettingsPage /> },
     ],
   },

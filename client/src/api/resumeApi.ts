@@ -37,10 +37,24 @@ async function updateResume(id: string, payload: ResumeUpdate): Promise<ResumeRe
   return res.json() as Promise<ResumeRead>;
 }
 
+async function fetchActiveResume(): Promise<ResumeListItem | null> {
+  const res = await fetch(`${BASE}/active`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error("Failed to fetch active resume");
+  return res.json() as Promise<ResumeListItem>;
+}
+
+async function setActiveResume(id: string): Promise<ResumeListItem> {
+  const res = await fetch(`${BASE}/${id}/set-active`, { method: "PUT" });
+  if (!res.ok) throw new Error("Failed to set active resume");
+  return res.json() as Promise<ResumeListItem>;
+}
+
 /** React Query key constants. */
 export const RESUME_KEYS = {
   list: ["resumes"] as const,
   detail: (id: string) => ["resumes", id] as const,
+  active: ["resumes", "active"] as const,
 };
 
 /** Fetch all resumes, newest first. */
@@ -87,6 +101,28 @@ export function useUpdateResume(): ReturnType<
     mutationFn: ({ id, payload }) => updateResume(id, payload),
     onSuccess: (updated) => {
       qc.setQueryData(RESUME_KEYS.detail(updated.id), updated);
+      qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
+    },
+  });
+}
+
+/** Fetch the currently active resume (null if none). */
+export function useActiveResume(): ReturnType<typeof useQuery<ResumeListItem | null>> {
+  return useQuery<ResumeListItem | null>({
+    queryKey: RESUME_KEYS.active,
+    queryFn: fetchActiveResume,
+  });
+}
+
+/** Set a resume as the active one. Invalidates the active resume query on success. */
+export function useSetActiveResume(): ReturnType<
+  typeof useMutation<ResumeListItem, Error, string>
+> {
+  const qc = useQueryClient();
+  return useMutation<ResumeListItem, Error, string>({
+    mutationFn: setActiveResume,
+    onSuccess: (resume) => {
+      qc.setQueryData(RESUME_KEYS.active, resume);
       qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
     },
   });

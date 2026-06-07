@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useBlocker } from "react-router-dom";
+import { useBlocker, useNavigate, useSearchParams } from "react-router-dom";
 import { en } from "@/i18n/en";
-import { useResumes, useResume, useUploadResume } from "@/api/resumeApi";
+import { useResumes, useResume, useUploadResume, useSetActiveResume } from "@/api/resumeApi";
 import { UploadZone } from "@/components/resume/UploadZone";
 import { ResumeList } from "@/components/resume/ResumeList";
 import { ResumeEditor } from "@/components/resume/ResumeEditor";
 import { Toast } from "@/components/resume/Toast";
+import { RESTORE_KEY } from "./JobAddPage";
 import styles from "./ResumeManagerPage.module.css";
 
 const rm = en.pages.resumeManager;
@@ -14,8 +15,13 @@ type ToastState = { message: string; kind: "success" | "error" } | null;
 
 /** Full Resume Manager: upload → parse → view/edit → save. */
 export function ResumeManagerPage(): React.JSX.Element {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
+
   const { data: resumeList = [] } = useResumes();
   const { mutate: upload, isPending: isUploading } = useUploadResume();
+  const { mutate: setResumeActive } = useSetActiveResume();
 
   // activeId drives what is shown in the editor — set after upload or dropdown select.
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -127,7 +133,31 @@ export function ResumeManagerPage(): React.JSX.Element {
           </div>
           <ResumeEditor
             resume={activeResume}
-            onSaveSuccess={(): void => showToast(rm.saveSuccess, "success")}
+            onSaveSuccess={(): void => {
+              showToast(rm.saveSuccess, "success");
+              if (returnTo) {
+                if (activeId) {
+                  setResumeActive(activeId, {
+                    onSuccess: () => { navigate(returnTo); },
+                    onError: () => {
+                      // Active resume was not set — clear autoScore so the restore
+                      // effect doesn't attempt scoring without an active resume.
+                      const raw = sessionStorage.getItem(RESTORE_KEY);
+                      if (raw) {
+                        try {
+                          const stored = JSON.parse(raw) as Record<string, unknown>;
+                          stored["autoScore"] = false;
+                          sessionStorage.setItem(RESTORE_KEY, JSON.stringify(stored));
+                        } catch { /* ignore */ }
+                      }
+                      navigate(returnTo);
+                    },
+                  });
+                } else {
+                  navigate(returnTo);
+                }
+              }
+            }}
             onSaveError={(): void => showToast(rm.saveError, "error")}
             onDirtyChange={setIsDirty}
           />

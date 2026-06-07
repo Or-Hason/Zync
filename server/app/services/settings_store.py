@@ -1,0 +1,126 @@
+"""Single-row settings persistence (blacklist + bypass preference).
+
+All settings live in one JSONB blob in the ``settings`` singleton row. The row
+is created on first access with a race-condition-safe ``INSERT ... ON CONFLICT``
+upsert, so concurrent first reads can never produce duplicate rows.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from fastapi import Depends
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.session import get_db
+from app.models.settings import DEFAULT_SETTINGS_DATA, SETTINGS_ROW_ID, Settings
+
+logger = logging.getLogger(__name__)
+
+
+class DuplicateKeywordError(Exception):
+    """Raised when adding a blacklist keyword that already exists."""
+
+
+class SettingsStore:
+    """Read/write accessor over the singleton settings row."""
+
+    def __init__(self, db: AsyncSession) -> None:
+        """Initialise the store.
+
+        Args:
+            db: The active async DB session.
+        """
+        self._db = db
+
+    async def _load(self) -> dict:
+        """Return the settings blob, creating the default row if absent."""
+        ensure = (
+            insert(Settings)
+            .values(id=SETTINGS_ROW_ID, data=dict(DEFAULT_SETTINGS_DATA))
+            .on_conflict_do_nothing(index_elements=["id"])
+        )
+        await self._db.execute(ensure)
+        result = await self._db.execute(
+            select(Settings.data).where(Settings.id == SETTINGS_ROW_ID)
+        )
+        return dict(result.scalar_one())
+
+    async def _save(self, data: dict) -> None:
+        """Persist the full settings blob via a race-safe upsert."""
+        stmt = (
+            insert(Settings)
+            .values(id=SETTINGS_ROW_ID, data=data)
+            .on_conflict_do_update(index_elements=["id"], set_={"data": data})
+        )
+        await self._db.execute(stmt)
+
+    async def get_blacklist(self) -> list[str]:
+        """Return the current blacklist keywords."""
+        data = await self._load()
+        return list(data.get("blacklist", []))
+
+    async def add_keyword(self, keyword: str) -> list[str]:
+        """Add a trimmed, deduped keyword to the blacklist.
+
+        Args:
+            keyword: The keyword to add.
+
+        Returns:
+            The updated keyword list.
+
+        Raises:
+            ValueError: If the keyword is blank after trimming.
+            DuplicateKeywordError: If the keyword already exists (case-insensitive).
+        """
+        cleaned = keyword.strip()
+        if not cleaned:
+            raise ValueError("Keyword must not be blank.")
+
+        data = await self._load()
+        keywords = list(data.get("blacklist", []))
+        if any(cleaned.lower() == existing.lower() for existing in keywords):
+            raise DuplicateKeywordError(cleaned)
+
+        keywords.append(cleaned)
+        data["blacklist"] = keywords
+        await self._save(data)
+        return keywords
+
+    async def remove_keyword(self, keyword: str) -> list[str]:
+        """Remove a keyword (case-insensitive) from the blacklist.
+
+        Args:
+            keyword: The keyword to remove.
+
+        Returns:
+            The updated keyword list.
+        """
+        target = keyword.strip().lower()
+        data = await self._load()
+        keywords = [k for k in data.get("blacklist", []) if k.lower() != target]
+        data["blacklist"] = keywords
+        await self._save(data)
+        return keywords
+
+    async def get_bypass_preference(self) -> str:
+        """Return the blacklist-bypass preference (``ask``/``always``/``never``)."""
+        data = await self._load()
+        return data.get("blacklist_bypass_preference", "ask")
+
+    async def set_bypass_preference(self, preference: str) -> None:
+        """Persist the blacklist-bypass preference.
+
+        Args:
+            preference: One of ``ask``, ``always``, ``never``.
+        """
+        data = await self._load()
+        data["blacklist_bypass_preference"] = preference
+        await self._save(data)
+
+
+def get_settings_store(db: AsyncSession = Depends(get_db)) -> SettingsStore:
+    """FastAPI dependency providing a :class:`SettingsStore` for the request."""
+    return SettingsStore(db)
