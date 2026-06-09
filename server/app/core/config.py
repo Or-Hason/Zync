@@ -35,8 +35,15 @@ class Settings(BaseSettings):
     # Loaded from the environment; never hardcoded or logged. Empty when unset,
     # in which case the scoring endpoint aborts with HTTP 500.
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.5-flash"
+    # Comma-separated ordered list of model IDs. The fallback engine cycles
+    # through them on 429 errors and resets to the primary after 1 hour.
+    gemini_models: str = ""
     gemini_timeout_seconds: float = 30.0
+
+    @property
+    def gemini_models_list(self) -> list[str]:
+        """Ordered list of Gemini model IDs parsed from GEMINI_MODELS."""
+        return [m.strip() for m in self.gemini_models.split(",") if m.strip()]
 
     # ── Resume uploads ────────────────────────────────────────────────────────
     # Directory (relative paths are resolved against the server working dir).

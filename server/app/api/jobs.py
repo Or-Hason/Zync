@@ -31,7 +31,7 @@ from app.models.job import Job
 from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse
 from app.services.blacklist_filter import find_blacklist_hit
 from app.services.duplicate_detection import detect_duplicate, DuplicateAssessment
-from app.services.gemini_client import GeminiClient, get_gemini_client
+from app.services.gemini_client import GeminiClient, GeminiUnavailableError, get_gemini_client
 from app.services.job_parser import sanitize_job_data
 from app.services.job_repository import load_existing_jobs, load_scored_jobs, new_job
 from app.services.ollama_client import OllamaClient, get_ollama_client
@@ -198,12 +198,18 @@ async def scrape_job(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Gemini API key is not configured.",
         )
-    score = await gemini.score(
-        parsed.job_title,
-        parsed.job_description,
-        parsed.requirements.model_dump(),
-        active_resume.structured_data,
-    )
+    try:
+        score = await gemini.score(
+            parsed.job_title,
+            parsed.job_description,
+            parsed.requirements.model_dump(),
+            active_resume.structured_data,
+        )
+    except GeminiUnavailableError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="All Gemini models are currently rate-limited. Please try again later.",
+        )
 
     # ── Build persist metadata ────────────────────────────────────────────────
     if score is not None:

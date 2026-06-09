@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.core.config import get_settings
@@ -20,6 +21,15 @@ from app.schemas.job import ScoreResult
 from app.services.json_extraction import extract_json_object
 
 logger = logging.getLogger(__name__)
+
+# ── Stateful rotation state (process-level singletons) ───────────────────────
+# Safe for single-worker deployments — FastAPI workers share one process.
+current_model_index: int = 0
+last_rotated_at: datetime | None = None
+
+
+class GeminiUnavailableError(Exception):
+    """Raised when every model in the rotation list is rate-limited."""
 
 # Resume fields removed before any payload is sent to the external API.
 PII_FIELDS = (
@@ -146,25 +156,25 @@ def parse_score_response(text: str) -> ScoreResult | None:
 class GeminiClient:
     """Thin async wrapper over the Gemini ``generate_content`` API."""
 
-    def __init__(self, api_key: str, model: str, timeout_seconds: float) -> None:
+    def __init__(self, api_key: str, models: list[str], timeout_seconds: float) -> None:
         """Initialise the client.
 
         Args:
             api_key: Gemini API key (empty when unconfigured).
-            model: Model id, e.g. ``gemini-3.5-flash``.
+            models: Ordered list of model IDs to rotate through on rate-limit errors.
             timeout_seconds: Per-request timeout.
         """
         self._api_key = api_key
-        self._model = model
+        self._models = models
         self._timeout = timeout_seconds
 
     @property
     def is_configured(self) -> bool:
-        """Whether an API key is present."""
-        return bool(self._api_key)
+        """Whether an API key and at least one model are present."""
+        return bool(self._api_key) and bool(self._models)
 
-    def _generate(self, prompt: str) -> str:
-        """Synchronously call Gemini (run in a worker thread). Lazy-imports SDK.
+    def _generate(self, prompt: str, model: str) -> str:
+        """Synchronously call Gemini with a specific model (run in a worker thread).
 
         Uses the supported ``google-genai`` SDK (the older ``google-generativeai``
         package is deprecated and no longer maintained).
@@ -174,7 +184,7 @@ class GeminiClient:
 
         client = genai.Client(api_key=self._api_key)
         response = client.models.generate_content(
-            model=self._model,
+            model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
@@ -186,6 +196,43 @@ class GeminiClient:
         )
         return response.text or ""
 
+    def _generate_with_fallback(self, prompt: str) -> str:
+        """Try each model in rotation order; rotate forward on 429 errors.
+
+        Mutates the module-level ``current_model_index`` and ``last_rotated_at``
+        singletons. Raises :exc:`GeminiUnavailableError` when every model in the
+        list is rate-limited within the same request.
+        """
+        from google.api_core.exceptions import ResourceExhausted
+
+        global current_model_index, last_rotated_at
+
+        # Reset to primary after 1-hour cooldown from the last rotation.
+        if last_rotated_at is not None:
+            if datetime.now(timezone.utc) - last_rotated_at >= timedelta(hours=1):
+                current_model_index = 0
+                last_rotated_at = None
+                logger.info("Gemini model index reset to primary.")
+
+        num_models = len(self._models)
+        for _ in range(num_models):
+            model = self._models[current_model_index]
+            try:
+                return self._generate(prompt, model)
+            except ResourceExhausted:
+                next_index = (current_model_index + 1) % num_models
+                logger.warning(
+                    "Gemini rate limit on %s. Rotating to %s.",
+                    model,
+                    self._models[next_index],
+                )
+                current_model_index = next_index
+                last_rotated_at = datetime.now(timezone.utc)
+
+        raise GeminiUnavailableError(
+            f"All {num_models} Gemini model(s) are rate-limited. Retry later."
+        )
+
     async def score(
         self,
         job_title: str | None,
@@ -193,10 +240,11 @@ class GeminiClient:
         requirements: dict[str, Any] | None,
         resume_structured: dict[str, Any] | None,
     ) -> ScoreResult | None:
-        """Score a job against a resume, returning ``None`` on any failure.
+        """Score a job against a resume, returning ``None`` on any non-rate-limit failure.
 
         PII is stripped before the prompt is constructed. The synchronous SDK
         call is offloaded with ``asyncio.to_thread`` to keep the endpoint async.
+        Raises :exc:`GeminiUnavailableError` when all models are exhausted.
 
         Args:
             job_title: The job title.
@@ -212,7 +260,9 @@ class GeminiClient:
             job_title, job_description, requirements, clean_resume
         )
         try:
-            text = await asyncio.to_thread(self._generate, prompt)
+            text = await asyncio.to_thread(self._generate_with_fallback, prompt)
+        except GeminiUnavailableError:
+            raise
         except Exception as exc:  # noqa: BLE001 - normalise any SDK/network error.
             logger.error("Gemini scoring call failed", extra={"error": str(exc)})
             return None
@@ -224,10 +274,20 @@ class GeminiClient:
 
 
 def get_gemini_client() -> GeminiClient:
-    """FastAPI dependency factory for a :class:`GeminiClient`."""
+    """FastAPI dependency factory for a :class:`GeminiClient`.
+
+    Aborts with a clear :exc:`ValueError` when ``GEMINI_MODELS`` is absent or
+    empty — the server cannot score jobs without at least one model configured.
+    """
     cfg = get_settings()
+    models = cfg.gemini_models_list
+    if not models:
+        raise ValueError(
+            "GEMINI_MODELS is not configured. "
+            "Add a comma-separated list of model IDs to your .env file."
+        )
     return GeminiClient(
         api_key=cfg.gemini_api_key,
-        model=cfg.gemini_model,
+        models=models,
         timeout_seconds=cfg.gemini_timeout_seconds,
     )
