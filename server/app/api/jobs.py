@@ -67,7 +67,7 @@ async def scrape_job(
     """
     content = await resolve_content(payload)
 
-    parsed = sanitize_job_data(await ollama.parse_job(content))
+    parsed = sanitize_job_data(await ollama.parse_job(content), raw_text=content)
 
     # Reliable fallback: use raw content when the model omits core_job_posting.
     if not parsed.core_job_posting:

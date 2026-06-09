@@ -64,6 +64,8 @@ def new_job(
         is_duplicate=assessment.is_duplicate,
         duplicate_chance=assessment.duplicate_chance,
         published_at=parsed.published_at,
+        application_options=parsed.application_options or [],
+        recommended_apply_method=parsed.recommended_apply_method,
     )
 
 

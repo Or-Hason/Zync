@@ -82,6 +82,8 @@ class Job(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     duplicate_chance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    application_options: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    recommended_apply_method: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )

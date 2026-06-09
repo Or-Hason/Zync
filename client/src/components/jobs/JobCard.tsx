@@ -2,6 +2,7 @@ import { useActiveResume } from "@/api/resumeApi";
 import { useCheckCachedScore } from "@/api/jobsApi";
 import { en } from "@/i18n/en";
 import type { JobScrapeResponse } from "@/types/job";
+import { JobApplySection } from "./JobApplySection";
 import { JobCardBanner, type BannerStyle } from "./JobCardBanner";
 import { RequirementsSection } from "./RequirementsSection";
 import { ScorePlaceholder } from "./ScorePlaceholder";
@@ -56,6 +57,9 @@ export function JobCard({
     missing_skills: responseMissingSkills,
     system_advice,
     scored_by_resume_id,
+    source_url,
+    application_options,
+    recommended_apply_method,
   } = response;
 
   const activeResumeId = activeResume?.id ?? null;
@@ -174,6 +178,12 @@ export function JobCard({
           <div className={styles.statusBadge}>{getStatusLabel()}</div>
         </div>
       </div>
+
+      <JobApplySection
+        sourceUrl={source_url}
+        recommendedApplyMethod={recommended_apply_method}
+        applicationOptions={application_options}
+      />
 
       {showDuplicate && (
         <div className={styles.duplicateWarning} role="alert">

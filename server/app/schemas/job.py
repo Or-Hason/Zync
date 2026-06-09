@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
 
 
 class JobRequirements(BaseModel):
@@ -53,6 +53,8 @@ class ParsedJob(BaseModel):
     content_classification: str | None = None
     requirements: JobRequirements = Field(default_factory=JobRequirements)
     published_at: datetime | None = None
+    application_options: list[str] = Field(default_factory=list)
+    recommended_apply_method: str = "Apply via the platform's native button"
 
 
 class JobScrapeRequest(BaseModel):
@@ -86,6 +88,9 @@ class JobScrapeRequest(BaseModel):
         return self
 
 
+_DEFAULT_APPLY_METHOD = "Apply via the platform's native button"
+
+
 class JobRead(BaseModel):
     """Full job record returned by the scrape endpoint."""
 
@@ -106,6 +111,22 @@ class JobRead(BaseModel):
     scored_by_resume_id: UUID | None
     published_at: datetime | None
     created_at: datetime
+    application_options: list[str] = Field(default_factory=list)
+    recommended_apply_method: str = _DEFAULT_APPLY_METHOD
+
+    @field_validator("application_options", mode="before")
+    @classmethod
+    def _coerce_application_options(cls, v: object) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(i).strip() for i in v if i and str(i).strip()]
+
+    @field_validator("recommended_apply_method", mode="before")
+    @classmethod
+    def _coerce_apply_method(cls, v: object) -> str:
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        return _DEFAULT_APPLY_METHOD
 
 
 class ScoreResult(BaseModel):

@@ -8,6 +8,7 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![read_file_bytes])
         .run(tauri::generate_context!())
         .expect("error while running Zync application");

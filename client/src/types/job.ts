@@ -23,6 +23,8 @@ export interface JobScrapeResponse {
   missing_skills?: string[];
   system_advice?: string | null;
   score_cached?: boolean;
+  application_options?: string[];
+  recommended_apply_method?: string | null;
 }
 
 export interface JobRequirements {

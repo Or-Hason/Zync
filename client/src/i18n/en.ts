@@ -146,6 +146,11 @@ export const en = {
         education: "Education",
         noScoreAdvice: "Upload or select a resume to calculate your personalized match score.",
         rescoring: "Recalculating score…",
+        viewOriginalJob: "View Original Job",
+        viewOriginalJobAriaLabel: "Open original job posting in new tab",
+        recommendedApplyMethod: "How to Apply",
+        waysToApply: "Ways to Apply",
+        waysToApplyLinkAriaLabel: "Open application link",
       },
       noActiveResume: {
         prompt: "No resume selected. Upload or select a resume to get a match score.",
