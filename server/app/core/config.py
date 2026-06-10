@@ -45,6 +45,20 @@ class Settings(BaseSettings):
         """Ordered list of Gemini model IDs parsed from GEMINI_MODELS."""
         return [m.strip() for m in self.gemini_models.split(",") if m.strip()]
 
+    # ── Background scraper (JobMaster auto-scan) ──────────────────────────────
+    # Base site URL; the search URL is derived from it at runtime.
+    jobmaster_base_url: str = "https://www.jobmaster.co.il/"
+    # Hard cap on jobs processed on the very FIRST scan for this source, so the
+    # initial import never burns a large number of Gemini calls at once.
+    initial_scan_limit: int = 3
+    # Defensive ceiling on jobs processed per scheduler tick on ANY run (incl.
+    # subsequent ones). Guards against a portal returning hundreds of new links
+    # in one cycle and triggering uncontrolled API usage.
+    max_jobs_per_scan: int = 4
+    # Master switch for the background scheduler. Disabled in test runs so the
+    # suite never spins up a real DB-hitting background loop.
+    scheduler_enabled: bool = True
+
     # ── Resume uploads ────────────────────────────────────────────────────────
     # Directory (relative paths are resolved against the server working dir).
     upload_dir: str = "uploads"

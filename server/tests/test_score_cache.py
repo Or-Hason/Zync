@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 from app.services.score_cache import (
     CACHE_SIMILARITY_THRESHOLD,
     ScoredJob,
@@ -21,7 +23,12 @@ class TestFindCachedScore:
 
     def test_identical_job_is_cache_hit(self) -> None:
         scored = [
-            ScoredJob(comparison_text=_TEXT, match_score=82, score_details=_DETAILS)
+            ScoredJob(
+                comparison_text=_TEXT,
+                match_score=82,
+                score_details=_DETAILS,
+                job_id=uuid4(),
+            )
         ]
         result = find_cached_score(_TEXT, scored)
         assert result is not None
@@ -36,6 +43,7 @@ class TestFindCachedScore:
                 comparison_text="Pastry Chef Bake croissants and run the kitchen",
                 match_score=82,
                 score_details=_DETAILS,
+                job_id=uuid4(),
             )
         ]
         assert find_cached_score(_TEXT, scored) is None
@@ -48,7 +56,14 @@ class TestFindCachedScore:
         assert CACHE_SIMILARITY_THRESHOLD == 0.90
 
     def test_missing_score_details_defaults_to_empty(self) -> None:
-        scored = [ScoredJob(comparison_text=_TEXT, match_score=55, score_details=None)]
+        scored = [
+            ScoredJob(
+                comparison_text=_TEXT,
+                match_score=55,
+                score_details=None,
+                job_id=uuid4(),
+            )
+        ]
         result = find_cached_score(_TEXT, scored)
         assert result is not None
         assert result.match_score == 55

@@ -9,10 +9,24 @@ from app.models.base import Base
 # Fixed primary key for the one-and-only settings row (singleton table).
 SETTINGS_ROW_ID = 1
 
+# Default scan-configuration values (single source of truth for both the
+# upsert-on-first-access defaults and the per-field backfill in the store).
+DEFAULT_AUTO_SCAN_ENABLED = False
+DEFAULT_SCAN_FREQUENCY_HOURS = 3
+DEFAULT_NOTIFICATION_SCORE_THRESHOLD = 80
+
+# Allowed values for scan_frequency_hours (mirrored by the API schema).
+SCAN_FREQUENCY_CHOICES = (1, 3, 6, 12, 24)
+
 # Default JSONB payload created on first access.
 DEFAULT_SETTINGS_DATA: dict = {
     "blacklist": [],
     "blacklist_bypass_preference": "ask",
+    "auto_scan_enabled": DEFAULT_AUTO_SCAN_ENABLED,
+    "scan_frequency_hours": DEFAULT_SCAN_FREQUENCY_HOURS,
+    "notification_score_threshold": DEFAULT_NOTIFICATION_SCORE_THRESHOLD,
+    # Internal scheduler bookkeeping (ISO-8601 string or null); not user-facing.
+    "last_scan_at": None,
 }
 
 

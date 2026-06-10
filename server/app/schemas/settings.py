@@ -30,3 +30,18 @@ class BypassPreferenceModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     preference: BypassPreference
+
+
+# Allowed scan cadences in hours. Mirrors ``SCAN_FREQUENCY_CHOICES`` in
+# ``app.models.settings``; using a Literal yields a clean HTTP 422 on bad input.
+ScanFrequencyHours = Literal[1, 3, 6, 12, 24]
+
+
+class ScanSettings(BaseModel):
+    """Read/write payload for the auto-scan configuration."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    auto_scan_enabled: bool
+    scan_frequency_hours: ScanFrequencyHours
+    notification_score_threshold: int = Field(ge=0, le=100)

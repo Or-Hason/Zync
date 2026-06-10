@@ -15,7 +15,14 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.models.settings import DEFAULT_SETTINGS_DATA, SETTINGS_ROW_ID, Settings
+from app.models.settings import (
+    DEFAULT_AUTO_SCAN_ENABLED,
+    DEFAULT_NOTIFICATION_SCORE_THRESHOLD,
+    DEFAULT_SCAN_FREQUENCY_HOURS,
+    DEFAULT_SETTINGS_DATA,
+    SETTINGS_ROW_ID,
+    Settings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +125,84 @@ class SettingsStore:
         """
         data = await self._load()
         data["blacklist_bypass_preference"] = preference
+        await self._save(data)
+
+    async def get_scan_settings(self) -> dict:
+        """Return the auto-scan configuration with defaults backfilled.
+
+        Older settings rows (created before the scan fields existed) lack these
+        keys, so each is read with its default to keep reads total.
+
+        Returns:
+            ``{auto_scan_enabled, scan_frequency_hours, notification_score_threshold}``.
+        """
+        data = await self._load()
+        return {
+            "auto_scan_enabled": bool(
+                data.get("auto_scan_enabled", DEFAULT_AUTO_SCAN_ENABLED)
+            ),
+            "scan_frequency_hours": int(
+                data.get("scan_frequency_hours", DEFAULT_SCAN_FREQUENCY_HOURS)
+            ),
+            "notification_score_threshold": int(
+                data.get(
+                    "notification_score_threshold",
+                    DEFAULT_NOTIFICATION_SCORE_THRESHOLD,
+                )
+            ),
+        }
+
+    async def update_scan_settings(
+        self,
+        *,
+        auto_scan_enabled: bool,
+        scan_frequency_hours: int,
+        notification_score_threshold: int,
+    ) -> dict:
+        """Persist all three auto-scan configuration fields.
+
+        Args:
+            auto_scan_enabled: Whether background scanning is on.
+            scan_frequency_hours: Hours between scans (validated by the schema).
+            notification_score_threshold: Minimum score (0–100) to notify on.
+
+        Returns:
+            The updated scan-settings dict.
+        """
+        data = await self._load()
+        data["auto_scan_enabled"] = bool(auto_scan_enabled)
+        data["scan_frequency_hours"] = int(scan_frequency_hours)
+        data["notification_score_threshold"] = int(notification_score_threshold)
+        await self._save(data)
+        return await self.get_scan_settings()
+
+    async def set_auto_scan_enabled(self, enabled: bool) -> None:
+        """Set only the ``auto_scan_enabled`` flag, leaving other fields intact.
+
+        Used by the resume-deletion guard, which must disable auto-scan inside
+        the same transaction as the deletion.
+
+        Args:
+            enabled: The new flag value.
+        """
+        data = await self._load()
+        data["auto_scan_enabled"] = bool(enabled)
+        await self._save(data)
+
+    async def get_last_scan_at(self) -> str | None:
+        """Return the ISO-8601 timestamp of the last completed scan, or ``None``."""
+        data = await self._load()
+        value = data.get("last_scan_at")
+        return value if isinstance(value, str) else None
+
+    async def set_last_scan_at(self, iso_timestamp: str) -> None:
+        """Record when a scan last ran (scheduler tick-gating bookkeeping).
+
+        Args:
+            iso_timestamp: ISO-8601 timestamp string.
+        """
+        data = await self._load()
+        data["last_scan_at"] = iso_timestamp
         await self._save(data)
 
 

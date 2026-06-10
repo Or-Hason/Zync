@@ -9,10 +9,20 @@ from __future__ import annotations
 import logging
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from sqlalchemy import select
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Response,
+    UploadFile,
+    status,
+)
+from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api._resume_helpers import fallback_version_name, read_capped
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.resume import Resume
@@ -20,6 +30,7 @@ from app.schemas.resume import ResumeListItem, ResumeRead, ResumeUpdate
 from app.services.file_storage import save_upload
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.resume_parser import sanitize_structured_data
+from app.services.settings_store import SettingsStore, get_settings_store
 from app.services.text_extraction import (
     TextExtractionError,
     UnsupportedFileTypeError,
@@ -29,44 +40,6 @@ from app.services.text_extraction import (
 
 router = APIRouter(prefix="/resumes", tags=["resumes"])
 logger = logging.getLogger(__name__)
-
-# Read chunk size while enforcing the upload cap without buffering the whole
-# stream up front.
-_READ_CHUNK_BYTES = 64 * 1024
-
-
-async def _read_capped(file: UploadFile, max_bytes: int) -> bytes:
-    """Read an upload fully, rejecting it once it exceeds the size cap.
-
-    Args:
-        file: The incoming multipart file.
-        max_bytes: Maximum number of bytes permitted.
-
-    Returns:
-        The complete file contents.
-
-    Raises:
-        HTTPException: 413 if the stream exceeds ``max_bytes``; 400 if empty.
-    """
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = await file.read(_READ_CHUNK_BYTES)
-        if not chunk:
-            break
-        total += len(chunk)
-        if total > max_bytes:
-            raise HTTPException(
-                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail=f"File exceeds the {max_bytes // (1024 * 1024)} MB limit.",
-            )
-        chunks.append(chunk)
-
-    if total == 0:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty."
-        )
-    return b"".join(chunks)
 
 
 @router.post(
@@ -96,7 +69,7 @@ async def upload_resume(
         HTTPException: 413 (too large), 415 (unsupported type), 422 (no text).
     """
     settings = get_settings()
-    data = await _read_capped(file, settings.max_upload_size_bytes)
+    data = await read_capped(file, settings.max_upload_size_bytes)
 
     try:
         kind = detect_file_kind(data)
@@ -118,7 +91,7 @@ async def upload_resume(
     raw_structured = await ollama.parse_resume(raw_text, file.filename or "")
     structured = sanitize_structured_data(raw_structured)
 
-    resolved_version = (version_name or "").strip() or _fallback_version_name(
+    resolved_version = (version_name or "").strip() or fallback_version_name(
         file.filename, structured.full_name
     )
 
@@ -139,23 +112,6 @@ async def upload_resume(
         extra={"resume_id": str(resume.id), "version_name": resume.version_name},
     )
     return ResumeRead.model_validate(resume)
-
-
-def _fallback_version_name(filename: str | None, full_name: str | None) -> str:
-    """Derive a default version label when the client supplies none.
-
-    Args:
-        filename: Original upload filename (may be ``None``).
-        full_name: Parsed candidate name (may be ``None``).
-
-    Returns:
-        A non-empty version label.
-    """
-    if filename:
-        stem = filename.rsplit("/", 1)[-1].rsplit(".", 1)[0].strip()
-        if stem:
-            return stem
-    return full_name or "Untitled Resume"
 
 
 @router.get(
@@ -266,3 +222,55 @@ async def update_resume(
         extra={"resume_id": str(resume.id), "version_name": resume.version_name},
     )
     return ResumeRead.model_validate(resume)
+
+
+@router.delete(
+    "/{resume_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    summary="Delete a resume (disables auto-scan if it was the active resume)",
+)
+async def delete_resume(
+    resume_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    store: SettingsStore = Depends(get_settings_store),
+) -> Response:
+    """Delete a resume and guard the auto-scan invariant.
+
+    If the deleted resume is the active one, ``auto_scan_enabled`` is set to
+    ``false`` within the SAME transaction as the deletion. This is deliberately
+    atomic: a crash between the two writes would otherwise leave auto-scan on
+    with no active resume — the exact silent-failure state this guard prevents.
+
+    Args:
+        resume_id: Target resume primary key.
+        db: Injected async DB session (shared with ``store``, so both writes
+            commit together).
+        store: Settings accessor bound to the same session.
+
+    Raises:
+        HTTPException: 404 if no resume matches ``resume_id``.
+    """
+    resume = await db.get(Resume, resume_id)
+    if resume is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found."
+        )
+
+    was_active = resume.is_active
+    # Core DELETE (not ORM ``db.delete``) so the DB-level ``ON DELETE`` rules run
+    # without SQLAlchemy lazy-loading the ``applications`` relationship — that
+    # lazy load would raise under the async engine. The FK cascade removes
+    # applications; the jobs FK nulls ``scored_by_resume_id``.
+    await db.execute(sa_delete(Resume).where(Resume.id == resume_id))
+
+    if was_active:
+        # Same-session write — committed atomically with the deletion by get_db.
+        await store.set_auto_scan_enabled(False)
+        logger.info(
+            "Active resume deleted — auto_scan_enabled automatically set to false."
+        )
+
+    await db.flush()
+    logger.info("Resume deleted", extra={"resume_id": str(resume_id)})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
