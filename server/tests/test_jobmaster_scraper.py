@@ -45,25 +45,25 @@ class TestBuildSearchUrl:
 class TestExtractJobLinks:
     """extract_job_links keeps only job anchors, resolved and de-duplicated."""
 
-    def test_extracts_and_resolves_click_links(self) -> None:
+    def test_extracts_and_resolves_checknum_links(self) -> None:
         html = (
-            "<a href='/code/kot/click.asp?i=11407'>Job A</a>"
+            "<a href='/jobs/checknum.asp?key=9763632'>Job A</a>"
             "<a href='/about'>About</a>"
-            "<a href='https://www.jobmaster.co.il/code/kot/click.asp?i=222'>Job B</a>"
+            "<a href='https://www.jobmaster.co.il/jobs/checknum.asp?key=9327810'>Job B</a>"
         )
         links = extract_job_links(html, _BASE)
         assert links == [
-            "https://www.jobmaster.co.il/code/kot/click.asp?i=11407",
-            "https://www.jobmaster.co.il/code/kot/click.asp?i=222",
+            "https://www.jobmaster.co.il/jobs/checknum.asp?key=9763632",
+            "https://www.jobmaster.co.il/jobs/checknum.asp?key=9327810",
         ]
 
     def test_deduplicates(self) -> None:
         html = (
-            "<a href='/code/kot/click.asp?i=1'>x</a>"
-            "<a href='/code/kot/click.asp?i=1'>x dup</a>"
+            "<a href='/jobs/checknum.asp?key=1'>x</a>"
+            "<a href='/jobs/checknum.asp?key=1'>x dup</a>"
         )
         assert extract_job_links(html, _BASE) == [
-            "https://www.jobmaster.co.il/code/kot/click.asp?i=1"
+            "https://www.jobmaster.co.il/jobs/checknum.asp?key=1"
         ]
 
     def test_no_job_links_returns_empty(self) -> None:
@@ -224,7 +224,7 @@ class TestRunScan:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         html = "".join(
-            f"<a href='/code/kot/click.asp?i={i}'>j{i}</a>" for i in range(5)
+            f"<a href='/jobs/checknum.asp?key={i}'>j{i}</a>" for i in range(5)
         )
         _patch_fetch_and_extract(monkeypatch, html)
         recorder = _PipelineRecorder()
@@ -252,14 +252,14 @@ class TestRunScan:
 
     async def test_skips_known_urls(self, monkeypatch: pytest.MonkeyPatch) -> None:
         html = (
-            "<a href='/code/kot/click.asp?i=1'>a</a>"
-            "<a href='/code/kot/click.asp?i=2'>b</a>"
+            "<a href='/jobs/checknum.asp?key=1'>a</a>"
+            "<a href='/jobs/checknum.asp?key=2'>b</a>"
         )
         _patch_fetch_and_extract(monkeypatch, html)
         recorder = _PipelineRecorder()
         monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
 
-        known = ["https://www.jobmaster.co.il/code/kot/click.asp?i=1"]
+        known = ["https://www.jobmaster.co.il/jobs/checknum.asp?key=1"]
         session = FakeScanSession(
             active_resumes=[_resume("Backend")], known_urls=known, source_count=2
         )
@@ -269,13 +269,13 @@ class TestRunScan:
         )
         assert report.new_links == 1
         assert len(recorder.calls) == 1
-        assert recorder.calls[0]["source_url"].endswith("i=2")
+        assert recorder.calls[0]["source_url"].endswith("key=2")
 
     async def test_aborts_batch_on_gemini_unavailable(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         html = "".join(
-            f"<a href='/code/kot/click.asp?i={i}'>j{i}</a>" for i in range(3)
+            f"<a href='/jobs/checknum.asp?key={i}'>j{i}</a>" for i in range(3)
         )
         _patch_fetch_and_extract(monkeypatch, html)
         # Second job reports all models rate-limited -> scan must stop.

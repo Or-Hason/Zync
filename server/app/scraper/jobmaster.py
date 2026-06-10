@@ -45,11 +45,11 @@ logger = logging.getLogger(__name__)
 SCRAPER_SOURCE = "jobmaster"
 
 # Substrings that mark an anchor href as an individual job posting. JobMaster
-# routes job clicks through a tracking endpoint (``/code/kot/click.asp?i=<id>``);
-# this is the single site-specific signal and the one place to adjust if the
-# portal changes its link structure. Kept deliberately narrow so navigation and
-# category links are never mistaken for jobs (which would waste Gemini calls).
-JOB_LINK_HINTS = ("click.asp",)
+# serves each listing under ``/jobs/checknum.asp?key=<id>``; this is the single
+# site-specific signal and the one place to adjust if the portal changes its
+# link structure. Kept deliberately narrow so navigation and category links are
+# never mistaken for jobs (which would waste Gemini calls).
+JOB_LINK_HINTS = ("checknum.asp",)
 
 
 @dataclass
