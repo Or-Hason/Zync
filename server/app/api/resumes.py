@@ -19,7 +19,8 @@ from fastapi import (
     UploadFile,
     status,
 )
-from sqlalchemy import delete as sa_delete, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api._resume_helpers import fallback_version_name, read_capped
@@ -27,7 +28,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.resume import Resume
 from app.schemas.resume import ResumeListItem, ResumeRead, ResumeUpdate
-from app.services.file_storage import save_upload
+from app.services.file_storage import delete_upload, save_upload
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.resume_parser import sanitize_structured_data
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -258,6 +259,7 @@ async def delete_resume(
         )
 
     was_active = resume.is_active
+    stored_file_path = resume.file_path
     # Core DELETE (not ORM ``db.delete``) so the DB-level ``ON DELETE`` rules run
     # without SQLAlchemy lazy-loading the ``applications`` relationship — that
     # lazy load would raise under the async engine. The FK cascade removes
@@ -272,5 +274,9 @@ async def delete_resume(
         )
 
     await db.flush()
+    # Best-effort disk cleanup AFTER the DB row is gone, so a filesystem failure
+    # never leaves a deleted-row-but-kept-file inconsistency; an orphaned file is
+    # the safer failure direction and is only logged.
+    await delete_upload(stored_file_path)
     logger.info("Resume deleted", extra={"resume_id": str(resume_id)})
     return Response(status_code=status.HTTP_204_NO_CONTENT)

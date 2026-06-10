@@ -81,6 +81,20 @@ export const en = {
       saveError: "Failed to save resume. Please try again.",
       errorBoundaryTitle: "Failed to display resume data.",
       errorBoundaryBody: "The parsed data contains unexpected values. You can try re-uploading.",
+      delete: {
+        button: "Delete",
+        buttonAriaLabel: "Delete this resume",
+        title: "Delete Resume?",
+        activeTitle: "Delete Active Resume?",
+        body: "This resume and its uploaded file will be permanently removed. This action cannot be undone.",
+        activeBody:
+          "This is your active resume. Deleting it will permanently remove it and its uploaded file, and will automatically turn off background auto-scanning. This action cannot be undone.",
+        confirm: "Delete Resume",
+        deleting: "Deleting…",
+        success: "Resume deleted.",
+        successActive: "Resume deleted. Auto-scan disabled.",
+        error: "Failed to delete resume. Please try again.",
+      },
     },
     settings: {
       title: "Settings",
@@ -107,6 +121,29 @@ export const en = {
         ask: "Ask before",
         always: "Always bypass",
         never: "Never bypass",
+      },
+      autoScan: {
+        title: "Automatic Job Scanning",
+        subtitle:
+          "Periodically scan job portals in the background using your active resume and notify you about strong matches.",
+        loading: "Loading scan settings…",
+        fetchError: "Failed to load scan settings.",
+        savedToast: "Scan settings saved.",
+        saveError: "Failed to save scan settings.",
+        enableLabel: "Enable background auto-scan",
+        enableAriaLabel: "Toggle background auto-scanning",
+        noActiveResumeHint:
+          "Upload and select an active resume to enable auto-scanning.",
+        enableConflict:
+          "An active resume is required to enable auto-scanning.",
+        frequencyLabel: "Scan frequency",
+        frequencyAriaLabel: "Hours between automatic scans",
+        frequencyEveryPrefix: "Every",
+        frequencyHoursSuffix: "hours",
+        frequencyHourSuffix: "hour",
+        thresholdLabel: "Notify when match score is at least",
+        thresholdAriaLabel: "Minimum match score to notify (0 to 100)",
+        thresholdHint: "Only matches scoring at or above this value trigger a notification.",
       },
     },
     jobAdd: {

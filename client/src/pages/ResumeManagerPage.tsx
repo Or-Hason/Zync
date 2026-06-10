@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
 import { useBlocker, useNavigate, useSearchParams } from "react-router-dom";
 import { en } from "@/i18n/en";
-import { useResumes, useResume, useUploadResume, useSetActiveResume } from "@/api/resumeApi";
+import {
+  useResumes,
+  useResume,
+  useUploadResume,
+  useSetActiveResume,
+  useDeleteResume,
+  useActiveResume,
+} from "@/api/resumeApi";
 import { UploadZone } from "@/components/resume/UploadZone";
 import { ResumeList } from "@/components/resume/ResumeList";
 import { ResumeEditor } from "@/components/resume/ResumeEditor";
+import { DeleteResumeModal } from "@/components/resume/DeleteResumeModal";
 import { Toast } from "@/components/resume/Toast";
 import { RESTORE_KEY } from "./JobAddPage";
 import styles from "./ResumeManagerPage.module.css";
@@ -20,13 +28,16 @@ export function ResumeManagerPage(): React.JSX.Element {
   const returnTo = searchParams.get("returnTo");
 
   const { data: resumeList = [] } = useResumes();
+  const { data: activeResumeRecord } = useActiveResume();
   const { mutate: upload, isPending: isUploading } = useUploadResume();
   const { mutate: setResumeActive } = useSetActiveResume();
+  const { mutate: deleteResume, isPending: isDeleting } = useDeleteResume();
 
   // activeId drives what is shown in the editor — set after upload or dropdown select.
   const [activeId, setActiveId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
   const [isDirty, setIsDirty] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Block React Router tab navigation when the editor has unsaved changes.
   const blocker = useBlocker(isDirty);
@@ -64,6 +75,27 @@ export function ResumeManagerPage(): React.JSX.Element {
 
   function showToast(message: string, kind: "success" | "error"): void {
     setToast({ message, kind });
+  }
+
+  // The resume shown in the editor is the system-active one when their IDs match.
+  const isShownResumeActive =
+    activeId !== null && activeResumeRecord?.id === activeId;
+
+  function handleConfirmDelete(): void {
+    if (!activeId) return;
+    const wasActive = isShownResumeActive;
+    deleteResume(activeId, {
+      onSuccess: () => {
+        setShowDeleteModal(false);
+        setIsDirty(false);
+        setActiveId(null);
+        showToast(wasActive ? rm.delete.successActive : rm.delete.success, "success");
+      },
+      onError: () => {
+        setShowDeleteModal(false);
+        showToast(rm.delete.error, "error");
+      },
+    });
   }
 
   function handleFile(file: File): void {
@@ -130,6 +162,13 @@ export function ResumeManagerPage(): React.JSX.Element {
             >
               {rm.uploadNew}
             </button>
+            <button
+              className={styles.deleteBtn}
+              onClick={(): void => setShowDeleteModal(true)}
+              aria-label={rm.delete.buttonAriaLabel}
+            >
+              {rm.delete.button}
+            </button>
           </div>
           <ResumeEditor
             resume={activeResume}
@@ -177,6 +216,16 @@ export function ResumeManagerPage(): React.JSX.Element {
             </div>
           )}
         </>
+      )}
+
+      {showDeleteModal && activeResume && (
+        <DeleteResumeModal
+          versionName={activeResume.version_name}
+          isActive={isShownResumeActive}
+          isDeleting={isDeleting}
+          onConfirm={handleConfirmDelete}
+          onCancel={(): void => setShowDeleteModal(false)}
+        />
       )}
     </main>
   );
