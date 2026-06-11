@@ -26,9 +26,6 @@ export function useNotifications(): void {
   useEffect(() => {
     if ("__TAURI__" in window) {
       void setupTauriNotifications();
-    } else if ("Notification" in window && Notification.permission === "default") {
-      // Proactively request browser notification permission on first mount.
-      void Notification.requestPermission();
     }
 
     function handleNavEvent(e: Event): void {

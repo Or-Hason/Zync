@@ -1,0 +1,75 @@
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: var(--color-surface-2);
+  border-left: 4px solid var(--color-accent);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, var(--color-text-muted));
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.message {
+  flex: 1;
+  min-width: 0;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.enableBtn {
+  height: 28px;
+  padding: 0 14px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md, 6px);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.15s;
+}
+
+.enableBtn:hover {
+  opacity: 0.88;
+}
+
+.dismissBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 1rem;
+  line-height: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-muted);
+  border-radius: 4px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.dismissBtn:hover {
+  background: var(--color-surface-3, rgba(0, 0, 0, 0.08));
+}

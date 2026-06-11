@@ -7,6 +7,7 @@ import {
 } from "@/api/settingsApi";
 import type { ScanFrequencyHours, ScanSettings } from "@/api/settingsApi";
 import { useActiveResume } from "@/api/resumeApi";
+import { DISMISSED_KEY } from "@/components/NotificationCTA";
 import { Toast } from "@/components/resume/Toast";
 import styles from "./AutoScanPanel.module.css";
 
@@ -44,6 +45,10 @@ export function AutoScanPanel(): React.JSX.Element {
 
   const [toast, setToast] = useState<ToastState>(null);
   const [thresholdDraft, setThresholdDraft] = useState<string>("");
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(
+    typeof window !== "undefined" && "Notification" in window ? Notification.permission : null,
+  );
+  const [ctaDismissed] = useState(() => localStorage.getItem(DISMISSED_KEY) === "true");
 
   // Keep the threshold input synced with the server value when it loads/changes.
   useEffect(() => {
@@ -67,6 +72,9 @@ export function AutoScanPanel(): React.JSX.Element {
   }
 
   function handleToggle(enabled: boolean): void {
+    if (enabled && !("__TAURI__" in window) && notifPermission === "default") {
+      void Notification.requestPermission().then(setNotifPermission);
+    }
     save({ auto_scan_enabled: enabled });
   }
 
@@ -132,6 +140,12 @@ export function AutoScanPanel(): React.JSX.Element {
             </label>
             {!hasActiveResume && (
               <p className={styles.hint} role="note">{s.noActiveResumeHint}</p>
+            )}
+            {!("__TAURI__" in window) && notifPermission === "denied" && (
+              <p className={styles.notifBlockedHint} role="note">{s.notifBlockedHint}</p>
+            )}
+            {!("__TAURI__" in window) && notifPermission === "default" && ctaDismissed && settings.auto_scan_enabled && (
+              <p className={styles.notifBlockedHint} role="note">{s.notifMutedHint}</p>
             )}
           </div>
 

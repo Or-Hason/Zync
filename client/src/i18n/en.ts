@@ -144,6 +144,10 @@ export const en = {
         thresholdLabel: "Notify when match score is at least",
         thresholdAriaLabel: "Minimum match score to notify (0 to 100)",
         thresholdHint: "Only matches scoring at or above this value trigger a notification.",
+        notifBlockedHint:
+          "Notifications are blocked. To unblock, click the site icon at the left of your browser's address bar and allow notifications.",
+        notifMutedHint:
+          "Notification prompts are muted. To receive job alerts, click the site icon at the left of your browser's address bar and allow notifications.",
       },
     },
     jobAdd: {
@@ -250,9 +254,10 @@ export const en = {
     title: "New Job Match",
     /** Template — substitute {jobTitle} and {score} at call site. */
     body: "{jobTitle} — Score: {score}",
-    blockedBanner:
-      "Notifications are blocked. Enable them in your browser settings to receive job alerts.",
-    blockedBannerDismiss: "Dismiss",
+    ctaBanner: "Enable notifications to get background alerts.",
+    enableBtn: "Enable",
+    dontAskAgain: "Don't ask me again",
+    dismiss: "Dismiss",
   },
   common: {
     loading: "Loading…",
