@@ -96,6 +96,7 @@ async def scan_tick() -> None:
                 base_url=settings.jobmaster_base_url,
                 initial_limit=settings.initial_scan_limit,
                 max_per_scan=settings.max_jobs_per_scan,
+                notification_threshold=scan_cfg["notification_score_threshold"],
             )
             await store.set_last_scan_at(now.isoformat())
             await db.commit()

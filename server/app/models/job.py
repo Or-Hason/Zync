@@ -90,6 +90,11 @@ class Job(Base):
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
+    # Set when a job-match notification is emitted; prevents re-emission on
+    # subsequent scraper ticks for the same job row.
+    notified_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     applications: Mapped[list[Application]] = relationship(
         "Application", back_populates="job", cascade="all, delete-orphan"

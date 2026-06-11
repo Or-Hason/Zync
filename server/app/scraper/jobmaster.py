@@ -30,7 +30,13 @@ from urllib.parse import quote_plus, urljoin
 from bs4 import BeautifulSoup, Tag
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.services.job_pipeline import KIND_GEMINI_UNAVAILABLE, run_job_pipeline
+from app.services import notification_bus
+from app.services.job_pipeline import (
+    KIND_CACHE_HIT,
+    KIND_GEMINI_UNAVAILABLE,
+    KIND_SCORED,
+    run_job_pipeline,
+)
 from app.services.job_repository import count_jobs_for_source, load_known_source_urls
 from app.services.job_scraper import (
     ContentTooLargeError,
@@ -148,6 +154,7 @@ async def _process_link(
     active_resume,
     search_term: str,
     is_first_run: bool,
+    notification_threshold: int | None = None,
 ) -> str | None:
     """Fetch one job page and run it through the scoring pipeline.
 
@@ -160,6 +167,8 @@ async def _process_link(
         active_resume: The active resume (passed through to avoid re-loading).
         search_term: The role searched for (stamped into search_filters).
         is_first_run: Whether this scan is the source's first run.
+        notification_threshold: Minimum match score to emit a notification.
+            ``None`` disables notification (safe default for tests / manual runs).
 
     Returns:
         The pipeline outcome kind, or ``None`` when the page could not be
@@ -193,6 +202,25 @@ async def _process_link(
             "Scraper processed job",
             extra={"job_id": str(outcome.job.id), "source_type": SCRAPER_SOURCE},
         )
+
+    # Notification hook — only when a fresh or cache-hit score meets the threshold.
+    # ``notified_at is None`` prevents re-emission if the same row passes through again.
+    if (
+        notification_threshold is not None
+        and outcome.kind in (KIND_SCORED, KIND_CACHE_HIT)
+        and outcome.job is not None
+        and outcome.job.match_score is not None
+        and outcome.job.notified_at is None
+        and outcome.job.match_score >= notification_threshold
+    ):
+        await notification_bus.emit_job_match(
+            job_id=str(outcome.job.id),
+            job_title=outcome.job.job_title or "",
+            match_score=outcome.job.match_score,
+        )
+        outcome.job.notified_at = datetime.now(timezone.utc)
+        await db.flush()
+
     return outcome.kind
 
 
@@ -205,6 +233,7 @@ async def run_scan(
     base_url: str,
     initial_limit: int,
     max_per_scan: int,
+    notification_threshold: int | None = None,
 ) -> ScanReport:
     """Run one full JobMaster scan and return a summary report.
 
@@ -216,6 +245,9 @@ async def run_scan(
         base_url: JobMaster base URL.
         initial_limit: First-run job cap.
         max_per_scan: Per-scan hard ceiling.
+        notification_threshold: Minimum match score to fire a notification.
+            ``None`` (default) disables notifications — used by tests and
+            any caller that does not want side-effects.
 
     Returns:
         A :class:`ScanReport` describing what happened.
@@ -264,6 +296,7 @@ async def run_scan(
             active_resume=active_resume,
             search_term=target_role,
             is_first_run=is_first_run,
+            notification_threshold=notification_threshold,
         )
         if kind == KIND_GEMINI_UNAVAILABLE:
             # All models rate-limited — stop now rather than burning the batch.

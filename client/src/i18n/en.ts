@@ -239,6 +239,20 @@ export const en = {
         selectAriaLabel: "Select active resume",
       },
     },
+    jobDetail: {
+      title: "Job Details",
+      loading: "Loading job…",
+      notFound: "Job not found.",
+      backToDashboard: "Back to Dashboard",
+    },
+  },
+  notifications: {
+    title: "New Job Match",
+    /** Template — substitute {jobTitle} and {score} at call site. */
+    body: "{jobTitle} — Score: {score}",
+    blockedBanner:
+      "Notifications are blocked. Enable them in your browser settings to receive job alerts.",
+    blockedBannerDismiss: "Dismiss",
   },
   common: {
     loading: "Loading…",

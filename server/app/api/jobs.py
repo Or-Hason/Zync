@@ -26,7 +26,7 @@ from app.api._job_pipeline_helpers import (
 )
 from app.db.session import get_db
 from app.models.job import Job
-from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse
+from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse, ScoreResult
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_pipeline import (
     KIND_BLACKLISTED,
@@ -135,6 +135,46 @@ async def scrape_job(
     return build_scrape_response(
         outcome.job, outcome.score, outcome.advice, score_cached=outcome.score_cached
     )
+
+
+@router.get(
+    "/{job_id}",
+    response_model=JobScrapeResponse,
+    summary="Fetch a stored job by ID (used by notification deep-links)",
+)
+async def get_job(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> JobScrapeResponse:
+    """Return the full job record for use by the notification deep-link route.
+
+    Reconstructs score fields from the persisted ``score_details`` JSONB so the
+    frontend's ``JobCard`` renders exactly as it did at ingestion time.
+
+    Args:
+        job_id: Target job primary key.
+        db: Injected async DB session.
+
+    Returns:
+        Full :class:`JobScrapeResponse` including scoring fields.
+
+    Raises:
+        HTTPException: 404 if no job matches ``job_id``.
+    """
+    job = await db.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    details = job.score_details or {}
+    score: ScoreResult | None = None
+    if details and job.match_score is not None:
+        score = ScoreResult(
+            match_score=job.match_score,
+            rationale=details.get("rationale"),
+            matched_skills=details.get("matched_skills", []),
+            missing_skills=details.get("missing_skills", []),
+        )
+    logger.info("Job fetched by ID", extra={"job_id": str(job_id)})
+    return build_scrape_response(job, score, "", score_cached=False)
 
 
 @router.get(
