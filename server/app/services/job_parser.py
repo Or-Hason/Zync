@@ -211,6 +211,15 @@ def _filter_verbatim(options: list[str], raw_text: str) -> list[str]:
     return [opt for opt in options if opt.lower() in text_lower]
 
 
+def _is_valid_apply_option(option: str) -> bool:
+    """Return True only for http/https URLs and email addresses.
+
+    Rejects bare job IDs, numbers, or any other non-actionable strings that
+    Ollama may hallucinate as application options.
+    """
+    return option.startswith(("http://", "https://")) or "@" in option
+
+
 def _as_apply_method(value: Any) -> str:
     """Return the value only when it is one of the three valid method literals."""
     text = _as_str(value)
@@ -236,6 +245,7 @@ def sanitize_job_data(raw: dict[str, Any], raw_text: str | None = None) -> Parse
     app_options = _as_str_list(raw.get("application_options"))
     if raw_text:
         app_options = _filter_verbatim(app_options, raw_text)
+    app_options = [opt for opt in app_options if _is_valid_apply_option(opt)]
 
     return ParsedJob(
         company_name=_as_str(raw.get("company_name")),
