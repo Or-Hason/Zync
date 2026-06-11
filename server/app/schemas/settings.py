@@ -38,10 +38,16 @@ ScanFrequencyHours = Literal[1, 3, 6, 12, 24]
 
 
 class ScanSettings(BaseModel):
-    """Read/write payload for the auto-scan configuration."""
+    """Read/write payload for the auto-scan configuration.
+
+    ``last_scan_at`` and ``scan_in_progress`` are server-managed read-only fields
+    returned by GET; they are silently ignored on PUT (``extra="ignore"``).
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     auto_scan_enabled: bool
     scan_frequency_hours: ScanFrequencyHours
     notification_score_threshold: int = Field(ge=0, le=100)
+    last_scan_at: str | None = None
+    scan_in_progress: bool = False

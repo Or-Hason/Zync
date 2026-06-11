@@ -20,6 +20,10 @@ export interface ScanSettings {
   auto_scan_enabled: boolean;
   scan_frequency_hours: ScanFrequencyHours;
   notification_score_threshold: number;
+  /** ISO-8601 timestamp of the last completed scan; null if none has run. */
+  last_scan_at: string | null;
+  /** True while a scan (scheduled or manual) is executing. */
+  scan_in_progress: boolean;
 }
 
 const BASE = "/api/settings";
@@ -65,10 +69,17 @@ async function setBypassPreference(preference: BypassPreference): Promise<void> 
   if (!res.ok) throw new Error("Failed to save preference");
 }
 
-async function fetchScanSettings(): Promise<ScanSettings> {
+export async function fetchScanSettings(): Promise<ScanSettings> {
   const res = await fetch(`${BASE}/scan`);
   if (!res.ok) throw new Error("Failed to fetch scan settings");
   return res.json() as Promise<ScanSettings>;
+}
+
+async function triggerScan(): Promise<void> {
+  const res = await fetch(`${BASE}/scan/trigger`, { method: "POST" });
+  if (!res.ok) {
+    throw Object.assign(new Error("Scan trigger failed"), { status: res.status });
+  }
 }
 
 async function updateScanSettings(payload: ScanSettings): Promise<ScanSettings> {
@@ -145,11 +156,34 @@ export function useSetBypassPreference(): ReturnType<
   });
 }
 
-/** Fetch the auto-scan configuration. */
-export function useScanSettings(): ReturnType<typeof useQuery<ScanSettings>> {
+/** Fetch the auto-scan configuration (no background polling). */
+export function useScanSettings(
+  opts: { refetchInterval?: number | false } = {},
+): ReturnType<typeof useQuery<ScanSettings>> {
   return useQuery<ScanSettings>({
     queryKey: SETTINGS_KEYS.scan,
     queryFn: fetchScanSettings,
+    refetchInterval: opts.refetchInterval,
+  });
+}
+
+/**
+ * Like useScanSettings but with smart polling:
+ * - 2 s while a scan is running (fast completion detection)
+ * - 10 s while auto_scan is enabled (quickly picks up scheduler-triggered scans)
+ * - no polling otherwise
+ */
+export function useScanStatusPolling(): ReturnType<typeof useQuery<ScanSettings>> {
+  return useQuery<ScanSettings>({
+    queryKey: SETTINGS_KEYS.scan,
+    queryFn: fetchScanSettings,
+    refetchInterval: (query) => {
+      const d = query.state.data;
+      if (!d) return false;
+      if (d.scan_in_progress) return 2_000;
+      if (d.auto_scan_enabled) return 10_000;
+      return false;
+    },
   });
 }
 
@@ -165,6 +199,19 @@ export function useUpdateScanSettings(): ReturnType<
     mutationFn: updateScanSettings,
     onSuccess: (settings) => {
       qc.setQueryData(SETTINGS_KEYS.scan, settings);
+    },
+  });
+}
+
+/** Trigger an immediate background scan. Invalidates the scan cache on success. */
+export function useTriggerScan(): ReturnType<
+  typeof useMutation<void, Error & { status?: number }, void>
+> {
+  const qc = useQueryClient();
+  return useMutation<void, Error & { status?: number }, void>({
+    mutationFn: triggerScan,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: SETTINGS_KEYS.scan });
     },
   });
 }

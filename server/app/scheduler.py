@@ -76,6 +76,10 @@ async def scan_tick() -> None:
             if not scan_cfg["auto_scan_enabled"]:
                 return
 
+            if scan_cfg["scan_in_progress"]:
+                logger.info("Scan tick skipped — manual scan in progress.")
+                return
+
             now = datetime.now(timezone.utc)
             if not is_scan_due(
                 await store.get_last_scan_at(), scan_cfg["scan_frequency_hours"], now

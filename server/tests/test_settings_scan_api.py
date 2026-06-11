@@ -18,6 +18,8 @@ _DEFAULT_SCAN = {
     "auto_scan_enabled": False,
     "scan_frequency_hours": 3,
     "notification_score_threshold": 80,
+    "last_scan_at": None,
+    "scan_in_progress": False,
 }
 
 
@@ -41,6 +43,8 @@ class FakeScanStore:
             "auto_scan_enabled": auto_scan_enabled,
             "scan_frequency_hours": scan_frequency_hours,
             "notification_score_threshold": notification_score_threshold,
+            "last_scan_at": None,
+            "scan_in_progress": False,
         }
         return dict(self.scan)
 
@@ -129,10 +133,11 @@ class TestPutScanSettings:
             "scan_frequency_hours": 6,
             "notification_score_threshold": 90,
         }
+        expected = {**payload, "last_scan_at": None, "scan_in_progress": False}
         response = client.put("/api/settings/scan", json=payload)
         assert response.status_code == 200
-        assert response.json() == payload
-        assert store.scan == payload
+        assert response.json() == expected
+        assert store.scan == expected
 
     def test_invalid_frequency_returns_422(self, client: TestClient) -> None:
         response = client.put(

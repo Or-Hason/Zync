@@ -148,11 +148,24 @@ export const en = {
           "Notifications are blocked. To unblock, click the site icon at the left of your browser's address bar and allow notifications.",
         notifMutedHint:
           "Notification prompts are muted. To receive job alerts, click the site icon at the left of your browser's address bar and allow notifications.",
+        nextScanLabel: "Next scan in",
+        scanningNow: "Scanning…",
+        pendingFirstScan: "Pending first scan",
+        scanDue: "Due now",
       },
     },
     jobAdd: {
       title: "Add Job",
       subtitle: "Enter a job posting URL or paste raw text to analyze",
+      scanNow: {
+        label: "Scan for Jobs",
+        scanning: "Scanning…",
+        ariaLabel: "Start a background job scan now",
+        scanningAriaLabel: "Background scan in progress",
+        noResumeTooltip: "Upload an active resume to enable scanning",
+        errorConflict: "A scan is already in progress.",
+        errorNoResume: "Upload an active resume to scan.",
+      },
       entryForm: {
         tabUrl: "Job URL",
         tabText: "Paste Text",

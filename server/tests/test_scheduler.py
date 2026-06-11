@@ -48,6 +48,8 @@ class FakeTickStore:
             "auto_scan_enabled": enabled,
             "scan_frequency_hours": frequency,
             "notification_score_threshold": 80,
+            "scan_in_progress": False,
+            "last_scan_at": None,
         }
         self._last = last
         self.set_last_calls: list[str] = []

@@ -8,6 +8,7 @@ upsert, so concurrent first reads can never produce duplicate rows.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 
 from fastapi import Depends
 from sqlalchemy import select
@@ -128,15 +129,17 @@ class SettingsStore:
         await self._save(data)
 
     async def get_scan_settings(self) -> dict:
-        """Return the auto-scan configuration with defaults backfilled.
+        """Return the full auto-scan configuration with defaults backfilled.
 
         Older settings rows (created before the scan fields existed) lack these
         keys, so each is read with its default to keep reads total.
 
         Returns:
-            ``{auto_scan_enabled, scan_frequency_hours, notification_score_threshold}``.
+            Dict with keys: ``auto_scan_enabled``, ``scan_frequency_hours``,
+            ``notification_score_threshold``, ``last_scan_at``, ``scan_in_progress``.
         """
         data = await self._load()
+        raw_last = data.get("last_scan_at")
         return {
             "auto_scan_enabled": bool(
                 data.get("auto_scan_enabled", DEFAULT_AUTO_SCAN_ENABLED)
@@ -150,6 +153,8 @@ class SettingsStore:
                     DEFAULT_NOTIFICATION_SCORE_THRESHOLD,
                 )
             ),
+            "last_scan_at": raw_last if isinstance(raw_last, str) else None,
+            "scan_in_progress": bool(data.get("scan_in_progress", False)),
         }
 
     async def update_scan_settings(
@@ -170,9 +175,15 @@ class SettingsStore:
             The updated scan-settings dict.
         """
         data = await self._load()
+        was_enabled = bool(data.get("auto_scan_enabled", DEFAULT_AUTO_SCAN_ENABLED))
         data["auto_scan_enabled"] = bool(auto_scan_enabled)
         data["scan_frequency_hours"] = int(scan_frequency_hours)
         data["notification_score_threshold"] = int(notification_score_threshold)
+        # When re-enabling auto-scan, reset last_scan_at to now so the countdown
+        # starts from a full frequency period instead of showing "Due now" based
+        # on a stale timestamp from the previous enable period.
+        if auto_scan_enabled and not was_enabled and data.get("last_scan_at"):
+            data["last_scan_at"] = datetime.now(timezone.utc).isoformat()
         await self._save(data)
         return await self.get_scan_settings()
 
@@ -187,6 +198,21 @@ class SettingsStore:
         """
         data = await self._load()
         data["auto_scan_enabled"] = bool(enabled)
+        await self._save(data)
+
+    async def get_scan_in_progress(self) -> bool:
+        """Return whether a scan is currently executing."""
+        data = await self._load()
+        return bool(data.get("scan_in_progress", False))
+
+    async def set_scan_in_progress(self, in_progress: bool) -> None:
+        """Set the scan-in-progress flag.
+
+        Args:
+            in_progress: ``True`` when a scan has started; ``False`` when done.
+        """
+        data = await self._load()
+        data["scan_in_progress"] = bool(in_progress)
         await self._save(data)
 
     async def get_last_scan_at(self) -> str | None:
