@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -197,13 +198,17 @@ class GeminiClient:
         return response.text or ""
 
     def _generate_with_fallback(self, prompt: str) -> str:
-        """Try each model in rotation order; rotate forward on 429 errors.
+        """Try each model in rotation order with intelligent retry on 429 errors.
+
+        Hard-limit 429s (error text contains "quota" or "exhausted") rotate
+        immediately. Burst/generic 429s retry the same model up to 3 times with
+        exponential back-off (2 s → 4 s) before rotating.
 
         Mutates the module-level ``current_model_index`` and ``last_rotated_at``
-        singletons. Raises :exc:`GeminiUnavailableError` when every model in the
-        list is rate-limited within the same request.
+        singletons. Raises :exc:`GeminiUnavailableError` when every model has
+        been exhausted. Non-429 client errors are re-raised immediately.
         """
-        from google.api_core.exceptions import ResourceExhausted
+        from google.genai.errors import ClientError
 
         global current_model_index, last_rotated_at
 
@@ -214,17 +219,46 @@ class GeminiClient:
                 last_rotated_at = None
                 logger.info("Gemini model index reset to primary.")
 
+        _MAX_RETRIES = 3
+        _BURST_BACKOFF = (2, 4)  # seconds to wait after 1st and 2nd burst failures
+
         num_models = len(self._models)
         for _ in range(num_models):
             model = self._models[current_model_index]
-            try:
-                return self._generate(prompt, model)
-            except ResourceExhausted:
+            should_rotate = False
+
+            for attempt in range(_MAX_RETRIES):
+                try:
+                    return self._generate(prompt, model)
+                except ClientError as exc:
+                    if exc.code != 429:
+                        raise  # Non-rate-limit — propagate immediately.
+                    error_lower = str(exc).lower()
+                    is_hard_limit = "quota" in error_lower or "exhausted" in error_lower
+                    if is_hard_limit:
+                        logger.warning("Gemini quota exhausted on %s — rotating.", model)
+                        should_rotate = True
+                        break
+                    # Burst/soft limit: back off and retry the same model.
+                    if attempt < len(_BURST_BACKOFF):
+                        delay = _BURST_BACKOFF[attempt]
+                        logger.warning(
+                            "Gemini burst limit on %s (attempt %d/%d) — retrying in %ds.",
+                            model, attempt + 1, _MAX_RETRIES, delay,
+                        )
+                        time.sleep(delay)
+                    else:
+                        logger.warning(
+                            "Gemini burst limit on %s persists after %d attempts — rotating.",
+                            model, _MAX_RETRIES,
+                        )
+                        should_rotate = True
+                        break
+
+            if should_rotate:
                 next_index = (current_model_index + 1) % num_models
                 logger.warning(
-                    "Gemini rate limit on %s. Rotating to %s.",
-                    model,
-                    self._models[next_index],
+                    "Rotating Gemini model: %s → %s.", model, self._models[next_index]
                 )
                 current_model_index = next_index
                 last_rotated_at = datetime.now(timezone.utc)

@@ -22,6 +22,7 @@ crash. PII rule: only counts and the search role are logged, never job text.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -304,6 +305,7 @@ async def run_scan(
             break
         if kind is not None:
             processed += 1
+        await asyncio.sleep(1.5)  # pace requests to avoid burst 429s
 
     logger.info(
         "Scan complete",

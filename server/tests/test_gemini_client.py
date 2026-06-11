@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
@@ -18,12 +19,16 @@ from app.services.gemini_client import (
     strip_pii,
 )
 
-try:
-    from google.api_core.exceptions import ResourceExhausted
-    _HAS_GOOGLE_SDK = True
-except ImportError:
-    _HAS_GOOGLE_SDK = False
-    ResourceExhausted = Exception  # type: ignore[misc,assignment]
+from google.genai.errors import ClientError
+
+def _rate_limit_error() -> ClientError:
+    """Return a ClientError representing a hard quota exhaustion (RESOURCE_EXHAUSTED)."""
+    return ClientError(429, {"error": {"code": 429, "message": "rate limited", "status": "RESOURCE_EXHAUSTED"}})
+
+
+def _burst_error() -> ClientError:
+    """Return a ClientError representing a soft burst/RPM limit (no quota keywords)."""
+    return ClientError(429, {"error": {"code": 429, "message": "Too Many Requests", "status": "RATE_LIMIT_EXCEEDED"}})
 
 
 @pytest.fixture()
@@ -149,7 +154,6 @@ class TestApiKeyNeverLogged:
         assert "SECRET_KEY_XYZ" not in caplog.text
 
 
-@pytest.mark.skipif(not _HAS_GOOGLE_SDK, reason="google-api-core not installed")
 class TestModelFallback:
     """Stateful model rotation on 429 errors."""
 
@@ -168,7 +172,7 @@ class TestModelFallback:
         def _generate(_prompt: str, model: str) -> str:
             calls.append(model)
             if model == "model-a":
-                raise ResourceExhausted("rate limited")
+                raise _rate_limit_error()
             return '{"match_score": 80, "rationale": "ok"}'
 
         monkeypatch.setattr(client, "_generate", _generate)
@@ -188,7 +192,7 @@ class TestModelFallback:
         monkeypatch.setattr(
             client,
             "_generate",
-            MagicMock(side_effect=ResourceExhausted("rate limited")),
+            MagicMock(side_effect=_rate_limit_error()),
         )
 
         with pytest.raises(GeminiUnavailableError):
@@ -211,6 +215,33 @@ class TestModelFallback:
 
         with pytest.raises(GeminiUnavailableError):
             await client.score("Engineer", "desc", {}, {})
+
+    def test_burst_retries_then_rotation(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """Burst 429s retry the current model 3×, then rotate to the next."""
+        client = self._client()
+        calls: list[str] = []
+        slept: list[float] = []
+
+        def _generate(_prompt: str, model: str) -> str:
+            calls.append(model)
+            if model == "model-a":
+                raise _burst_error()
+            return '{"match_score": 55, "rationale": "ok"}'
+
+        monkeypatch.setattr(client, "_generate", _generate)
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+
+        result = client._generate_with_fallback("prompt")
+
+        assert result == '{"match_score": 55, "rationale": "ok"}'
+        # 3 attempts on model-a (all burst 429), then 1 successful on model-b.
+        assert calls == ["model-a", "model-a", "model-a", "model-b"]
+        # Back-off sleeps: 2 s after attempt 1, 4 s after attempt 2.
+        assert slept == [2, 4]
+        assert _gc_module.current_model_index == 1
+        assert _gc_module.last_rotated_at is not None
 
     def test_one_hour_reset(
         self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
