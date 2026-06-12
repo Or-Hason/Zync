@@ -10,10 +10,11 @@ Stop sending generic CVs into the void. Zync scans multiple job platforms, evalu
 - **Backend:** Python 3.12+ (FastAPI, fully async).
 - **Database:** PostgreSQL 18 + `asyncpg` + SQLAlchemy 2.0 (Alembic migrations, JSONB-heavy schema).
 - **AI Inference:**
-  - **Local:** `Ollama` (`llama3:8b`) for cost-free job parsing, resume extraction, and content classification.
-  - **Cloud:** `Gemini Flash` API for deep reasoning — match scoring, skill gap analysis, and CV rewriting.
+  - **Local:** `Ollama` (`llama3:8b`) for cost-free job parsing, resume extraction, content classification, and application-channel extraction.
+  - **Cloud:** `Gemini Flash` API for deep reasoning — match scoring, skill gap analysis, and CV rewriting. Stateful model rotation across a configurable `GEMINI_MODELS` list with exponential back-off and 1-hour cooldown reset.
 - **Similarity Engine:** `scikit-learn` TF-IDF cosine similarity for duplicate detection and score caching.
-- **Scraping:** BeautifulSoup4 (HTML extraction); Playwright _(planned)_.
+- **Background Scheduler:** `APScheduler` (`AsyncIOScheduler`) — 5-minute tick cadence, live settings re-read on each tick.
+- **Scraping:** BeautifulSoup4 (HTML extraction) + `httpx.AsyncClient`; Playwright _(planned)_.
 - **Resume Parsing:** `pdfminer.six` (PDF), `python-docx` (DOCX).
 - **Date Parsing:** `dateparser` for normalizing relative and locale-aware date strings extracted from job postings.
 
@@ -82,8 +83,13 @@ DB_NAME=zync_db
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=llama3:8b
 
-# Gemini (required for scoring)
+# Gemini (required for scoring) — comma-separated fallback list
 GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODELS=gemini-3.5-flash,gemini-3-flash-preview,gemini-3.1-flash-lite
+
+# JobMaster scraper
+JOBMASTER_BASE_URL=https://www.jobmaster.co.il
+INITIAL_SCAN_LIMIT=3
 ```
 
 **Install dependencies:**
