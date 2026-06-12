@@ -1,4 +1,5 @@
 import { en } from "@/i18n/en";
+import { AutoScanPanel } from "@/components/settings/AutoScanPanel";
 import { BlacklistPanel } from "@/components/settings/BlacklistPanel";
 import { BypassPreferencePanel } from "@/components/settings/BypassPreferencePanel";
 import pageStyles from "./Page.module.css";
@@ -16,6 +17,7 @@ export function SettingsPage(): React.JSX.Element {
       </header>
 
       <div className={styles.panels}>
+        <AutoScanPanel />
         <BlacklistPanel />
         <BypassPreferencePanel />
       </div>

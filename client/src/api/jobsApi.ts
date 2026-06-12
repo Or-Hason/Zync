@@ -1,6 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { JobScrapeResponse } from "@/types/job";
 
+const JOB_DETAIL_STALE_MS = 5 * 60 * 1000; // 5 min — serves notification deep-links from cache
+
 const BASE = "/api/jobs";
 
 export interface ScrapeRequest {
@@ -65,6 +67,30 @@ async function checkCachedScore(
   if (!res.ok) return null;
   const data = (await res.json()) as { cached: boolean } & Partial<CachedScoreResult>;
   return data.cached ? (data as CachedScoreResult) : null;
+}
+
+async function fetchJob(id: string): Promise<JobScrapeResponse> {
+  const res = await fetch(`${BASE}/${encodeURIComponent(id)}`);
+  if (!res.ok) {
+    throw Object.assign(new Error("Job not found"), { status: res.status });
+  }
+  return res.json() as Promise<JobScrapeResponse>;
+}
+
+/**
+ * Fetch a single job by ID.
+ * Uses a 5-minute staleTime so the notification deep-link renders from cache
+ * without a redundant network request when the user just received the event.
+ *
+ * @param id - Job UUID, or null to disable the query.
+ */
+export function useJob(id: string | null): ReturnType<typeof useQuery<JobScrapeResponse>> {
+  return useQuery<JobScrapeResponse>({
+    queryKey: ["jobs", id],
+    queryFn: () => fetchJob(id!),
+    enabled: id !== null,
+    staleTime: JOB_DETAIL_STALE_MS,
+  });
 }
 
 /**

@@ -81,6 +81,20 @@ export const en = {
       saveError: "Failed to save resume. Please try again.",
       errorBoundaryTitle: "Failed to display resume data.",
       errorBoundaryBody: "The parsed data contains unexpected values. You can try re-uploading.",
+      delete: {
+        button: "Delete",
+        buttonAriaLabel: "Delete this resume",
+        title: "Delete Resume?",
+        activeTitle: "Delete Active Resume?",
+        body: "This resume and its uploaded file will be permanently removed. This action cannot be undone.",
+        activeBody:
+          "This is your active resume. Deleting it will permanently remove it and its uploaded file, and will automatically turn off background auto-scanning. This action cannot be undone.",
+        confirm: "Delete Resume",
+        deleting: "Deleting…",
+        success: "Resume deleted.",
+        successActive: "Resume deleted. Auto-scan disabled.",
+        error: "Failed to delete resume. Please try again.",
+      },
     },
     settings: {
       title: "Settings",
@@ -108,10 +122,50 @@ export const en = {
         always: "Always bypass",
         never: "Never bypass",
       },
+      autoScan: {
+        title: "Automatic Job Scanning",
+        subtitle:
+          "Periodically scan job portals in the background using your active resume and notify you about strong matches.",
+        loading: "Loading scan settings…",
+        fetchError: "Failed to load scan settings.",
+        savedToast: "Scan settings saved.",
+        saveError: "Failed to save scan settings.",
+        enableLabel: "Enable background auto-scan",
+        enableAriaLabel: "Toggle background auto-scanning",
+        noActiveResumeHint:
+          "Upload and select an active resume to enable auto-scanning.",
+        enableConflict:
+          "An active resume is required to enable auto-scanning.",
+        frequencyLabel: "Scan frequency",
+        frequencyAriaLabel: "Hours between automatic scans",
+        frequencyEveryPrefix: "Every",
+        frequencyHoursSuffix: "hours",
+        frequencyHourSuffix: "hour",
+        thresholdLabel: "Notify when match score is at least",
+        thresholdAriaLabel: "Minimum match score to notify (0 to 100)",
+        thresholdHint: "Only matches scoring at or above this value trigger a notification.",
+        notifBlockedHint:
+          "Notifications are blocked. To unblock, click the site icon at the left of your browser's address bar and allow notifications.",
+        notifMutedHint:
+          "Notification prompts are muted. To receive job alerts, click the site icon at the left of your browser's address bar and allow notifications.",
+        nextScanLabel: "Next scan in",
+        scanningNow: "Scanning…",
+        pendingFirstScan: "Pending first scan",
+        scanDue: "Due now",
+      },
     },
     jobAdd: {
       title: "Add Job",
       subtitle: "Enter a job posting URL or paste raw text to analyze",
+      scanNow: {
+        label: "Scan for Jobs",
+        scanning: "Scanning…",
+        ariaLabel: "Start a background job scan now",
+        scanningAriaLabel: "Background scan in progress",
+        noResumeTooltip: "Upload an active resume to enable scanning",
+        errorConflict: "A scan is already in progress.",
+        errorNoResume: "Upload an active resume to scan.",
+      },
       entryForm: {
         tabUrl: "Job URL",
         tabText: "Paste Text",
@@ -146,6 +200,11 @@ export const en = {
         education: "Education",
         noScoreAdvice: "Upload or select a resume to calculate your personalized match score.",
         rescoring: "Recalculating score…",
+        viewOriginalJob: "View Original Job",
+        viewOriginalJobAriaLabel: "Open original job posting in new tab",
+        recommendedApplyMethod: "How to Apply",
+        waysToApply: "Ways to Apply",
+        waysToApplyLinkAriaLabel: "Open application link",
       },
       noActiveResume: {
         prompt: "No resume selected. Upload or select a resume to get a match score.",
@@ -197,6 +256,21 @@ export const en = {
         selectAriaLabel: "Select active resume",
       },
     },
+    jobDetail: {
+      title: "Job Details",
+      loading: "Loading job…",
+      notFound: "Job not found.",
+      backToDashboard: "Back to Dashboard",
+    },
+  },
+  notifications: {
+    title: "New Job Match",
+    /** Template — substitute {jobTitle} and {score} at call site. */
+    body: "{jobTitle} — Score: {score}",
+    ctaBanner: "Enable notifications to get background alerts.",
+    enableBtn: "Enable",
+    dontAskAgain: "Don't ask me again",
+    dismiss: "Dismiss",
   },
   common: {
     loading: "Loading…",

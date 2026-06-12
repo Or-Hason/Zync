@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
@@ -31,6 +31,8 @@ def new_job(
     match_score: int | None = None,
     score_details: dict | None = None,
     scored_by_resume_id: UUID | None = None,
+    source_type: str = "manual",
+    search_filters: dict | None = None,
 ) -> Job:
     """Build a ``jobs`` ORM row from parsed data and pipeline results.
 
@@ -43,6 +45,10 @@ def new_job(
         match_score: Optional 0–100 score.
         score_details: Optional ``{rationale, matched_skills, missing_skills}``.
         scored_by_resume_id: Resume active at scoring time (if scored).
+        source_type: Ingestion source (``"manual"`` or a scraper id like
+            ``"jobmaster"``).
+        search_filters: Scraper search metadata persisted to the row's
+            ``search_filters`` JSONB column (``None`` for manual ingestion).
 
     Returns:
         A transient :class:`Job` instance (not yet added to a session).
@@ -55,8 +61,9 @@ def new_job(
         job_description=parsed.job_description,
         raw_content=raw_content,
         requirements=parsed.requirements.model_dump(),
-        source_type="manual",
+        source_type=source_type,
         source_url=source_url,
+        search_filters=search_filters,
         match_score=match_score,
         scored_by_resume_id=scored_by_resume_id,
         score_details=score_details,
@@ -64,6 +71,8 @@ def new_job(
         is_duplicate=assessment.is_duplicate,
         duplicate_chance=assessment.duplicate_chance,
         published_at=parsed.published_at,
+        application_options=parsed.application_options or [],
+        recommended_apply_method=parsed.recommended_apply_method,
     )
 
 
@@ -124,6 +133,42 @@ async def load_scored_jobs(db: AsyncSession, resume_id: UUID) -> list[ScoredJob]
         )
         for row in rows
     ]
+
+
+async def load_known_source_urls(db: AsyncSession) -> set[str]:
+    """Return every non-null ``source_url`` currently stored in ``jobs``.
+
+    Used by the scraper to skip URLs already discovered, so a job is never
+    re-fetched or re-scored across scans.
+
+    Args:
+        db: Active async DB session.
+
+    Returns:
+        A set of known source URLs.
+    """
+    rows = (await db.execute(select(Job.source_url).where(Job.source_url.isnot(None)))).all()
+    return {row.source_url for row in rows}
+
+
+async def count_jobs_for_source(db: AsyncSession, source: str) -> int:
+    """Count jobs whose ``search_filters->>'source'`` equals ``source``.
+
+    Drives "first run" detection per scraper source, so an initial-import cap
+    only triggers when *this* scraper has never saved a job — not merely when
+    the table is globally empty (manual jobs must not suppress it).
+
+    Args:
+        db: Active async DB session.
+        source: The scraper source id (e.g. ``"jobmaster"``).
+
+    Returns:
+        The number of jobs previously saved by this source.
+    """
+    stmt = select(func.count()).select_from(Job).where(
+        Job.search_filters["source"].astext == source
+    )
+    return int((await db.execute(stmt)).scalar_one())
 
 
 async def update_job_with_score(

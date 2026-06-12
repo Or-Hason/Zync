@@ -40,3 +40,34 @@ async def save_upload(data: bytes, kind: FileKind) -> Path:
 
     logger.info("Stored resume upload", extra={"kind": kind, "bytes": len(data)})
     return destination.resolve()
+
+
+async def delete_upload(file_path: str) -> bool:
+    """Remove a stored upload file from disk (best-effort).
+
+    Deletion is best-effort: a missing or already-removed file is treated as
+    success, and any filesystem error is logged but never propagated, so resume
+    deletion (the DB row removal) is never blocked by orphaned-file cleanup.
+
+    Args:
+        file_path: Absolute path to the stored upload file.
+
+    Returns:
+        ``True`` if the file no longer exists after the call, ``False`` if it
+        could not be removed.
+    """
+    if not file_path:
+        return True
+
+    target = Path(file_path)
+    try:
+        target.unlink(missing_ok=True)
+    except OSError:
+        logger.warning(
+            "Failed to delete resume upload file from disk",
+            extra={"path": target.name},
+        )
+        return False
+
+    logger.info("Deleted resume upload file", extra={"path": target.name})
+    return True

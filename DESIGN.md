@@ -21,20 +21,32 @@ A strict boundary separates the two AI layers to keep prompts simple, costs pred
 | Concern | Ollama (local) | Gemini (cloud) |
 | :--- | :--- | :--- |
 | **Role** | Dumb extraction — pull structured fields from raw text | Smart reasoning — evaluate, compare, score |
-| **Tasks** | Job field extraction (title, company, dates, requirements), resume parsing, content classification | Match scoring (0–100), rationale generation, skill gap analysis |
+| **Tasks** | Job field extraction (title, company, dates, requirements, application options), resume parsing, content classification | Match scoring (0–100), rationale generation, skill gap analysis |
 | **Prompt style** | Short, strict, schema-bound. Outputs are sanitized and length-capped before use. | Rich context (requirements JSONB + resume structured data). Output is validated against a Pydantic schema. |
-| **Data sent** | Raw job posting or resume text (local inference — never leaves the machine) | Only `{ job_title, job_description, requirements, structured_resume_data }` — no raw text, no PII |
-| **Failure mode** | Graceful fallback (missing fields default to `null`; unclassified input is treated as `VALID_JOB`) | Scoring returns `null` on failure; the job is still persisted without a score |
+| **Data sent** | Raw job posting or resume text (local inference — never leaves the machine) | Only `{ job_title, job_description, requirements, structured_resume_data }` — PII fields stripped before dispatch |
+| **Failure mode** | Up to 3 retry attempts on empty parse; job silently dropped (not persisted) if all retries fail | Scoring returns `null` on failure; the job is still persisted without a score |
 
 **Rule:** Ollama prompts must never perform reasoning or ranking. Gemini prompts must never perform raw text extraction. Mixing these responsibilities is a regression.
+
+### Gemini Reliability — Stateful Model Rotation
+
+`GEMINI_MODELS` (comma-separated env var) defines an ordered fallback list. A module-level `current_model_index` and `last_rotated_at` singleton govern rotation:
+
+- **Permanent errors** (non-429 `ClientError`, e.g. 400, 403): re-raised immediately, no rotation.
+- **Quota exhaustion** (429 with `"quota"` / `"exhausted"` in message): rotates to the next model immediately.
+- **Transient errors** (soft 429 or any `ServerError` / 5xx): retries the same model up to 3× with 2 s → 4 s exponential back-off, then rotates.
+- **Full exhaustion**: all models tried → raises `GeminiUnavailableError` → HTTP 503.
+- **1-hour reset**: if `datetime.now() - last_rotated_at >= 1 hour`, index resets to 0 (primary) before the next call.
+
+Scoring domain helpers (prompt building, PII stripping, response parsing) live in `gemini_scoring.py`; retry/rotation logic lives in `gemini_client.py`.
 
 ## 4. CORE WORKFLOWS
 
 ### 4.1 Job Discovery
 
 1. **Manual Entry:** User pastes a URL or raw job text. The server fetches the HTML (URL path), extracts readable content with BeautifulSoup4, and enforces a content size cap.
-2. **Auto-Scraping:** _(Planned)_ Scheduled scraping of predefined job boards (LinkedIn, Glassdoor, etc.).
-3. **Parsing:** Extracted text is passed to Ollama to produce structured fields (company, title, description, requirements, classification, published date).
+2. **Auto-Scraping:** An `APScheduler AsyncIOScheduler` fires every 5 minutes (base tick). On each tick it re-reads `auto_scan_enabled` and `scan_frequency_hours` from the DB; the scan only runs when due (elapsed ≥ frequency − 5 min slack). The JobMaster scraper (`server/app/scraper/jobmaster.py`) reads `target_role` from the active resume's `structured_data`, deduplicates against existing `source_url` values, caps the first run to `INITIAL_SCAN_LIMIT` jobs, and populates `search_filters` JSONB on every saved row. A **Scan Now** button triggers an immediate manual scan via `POST /api/settings/scan/trigger` (runs in a background task; guarded by a `scan_in_progress` flag to prevent double-runs).
+3. **Parsing:** Extracted text is passed to Ollama to produce structured fields (company, title, description, requirements, application options, classification, published date). Ollama retries up to 3× on empty response; a persistent failure drops the job without a DB write.
 
 ### 4.2 Evaluation Pipeline
 
@@ -49,11 +61,20 @@ The scoring pipeline runs in a strict order to minimize LLM calls and DB writes 
 7. **Persist & Auto-Reject** — A new job row is always inserted (never updated). Jobs with `match_score < 40` receive `status=auto_rejected` automatically.
 8. **System Advice** — A user-facing advice string is generated from the score, duplicate status, and matched job status; returned in the API response for immediate display.
 
-### 4.3 Action & Management
+### 4.3 Notifications
+
+Push notifications fire immediately after the background scraper (or manual scan) scores a job at or above the user's `notification_score_threshold`:
+
+- **Backend:** After scoring, the pipeline calls `notification_bus.emit_job_match(job_id, job_title, match_score)`. A `notified_at` timestamp is written to the `jobs` row; subsequent ticks skip re-notification for the same job. `GET /api/notifications/stream` is a long-lived Server-Sent Events endpoint that fans events out via per-client `asyncio.Queue`. Comment-line pings fire every 30 s to prevent proxy timeouts.
+- **Frontend:** `useNotifications` hook (mounted once in `App.tsx`) opens an `EventSource` to `/api/notifications/stream`. On `job_match` events it calls `fireNotification(jobTitle, matchScore)`.
+  - **Tauri (desktop):** `@tauri-apps/plugin-notification` `sendNotification` with a registered action type. `onAction` handler calls `win.unminimize() → win.show() → win.setFocus()` to restore a minimized window.
+  - **Web:** `new Notification(title, { body })`. `onclick` calls `e.preventDefault() → notif.close() → window.focus()`. Permission is requested lazily on first event; a dismissible banner renders when permission is `"denied"`.
+
+### 4.4 Action & Management
 
 1. Users view and manage scored jobs in the Dashboard.
 2. The active resume can be switched at any time; the frontend performs a read-only cache check to show the cached score for the selected resume without re-scoring.
-3. _(Planned)_ High-match jobs trigger local push notifications via Tauri.
+3. Each job card displays a **View Original Job** button (when `source_url` is present), `recommended_apply_method`, and a **Ways to Apply** section (when `application_options.length > 1`).
 4. _(Planned)_ One-click tailored CV generation and semi-auto application submission.
 
 ## 5. DATABASE SCHEMA (PostgreSQL 18)
@@ -76,8 +97,11 @@ The scoring pipeline runs in a strict order to minimize LLM calls and DB writes 
 | `scored_by_resume_id` | UUID | Nullable. FK → `resumes.id` (SET NULL on delete). Resume that produced the score. |
 | `score_details` | JSONB | Nullable. `{ rationale, matched_skills, missing_skills }` from Gemini. |
 | `status` | VARCHAR(50) | `not_applied` · `applied` · `auto_rejected` · `user_rejected` · `assessment_task` · `assessment_rejected` · `home_test` · `home_test_rejected` · `professional_interview` · `professional_interview_rejected` · `hr_interview` · `hr_interview_rejected` · `accepted`. |
+| `application_options` | JSONB | Nullable. List of extracted email addresses or external ATS URLs from the job text. |
+| `recommended_apply_method` | TEXT | Preferred application channel extracted by Ollama. Defaults to `"Apply via the platform's native button"`. |
 | `is_duplicate` | BOOLEAN | True when near-identical content was already imported. |
 | `duplicate_chance` | INTEGER | Nullable. 0–100 duplicate probability from TF-IDF similarity. |
+| `notified_at` | TIMESTAMPTZ | Nullable. Set when a push notification was emitted; prevents duplicate notifications on subsequent scraper ticks. |
 | `published_at` | TIMESTAMPTZ | Nullable. Job posting date extracted from content. |
 | `created_at` | TIMESTAMPTZ | DB insertion time. |
 
@@ -101,7 +125,7 @@ Singleton row. A `CHECK (id = 1)` constraint ensures only one row ever exists; a
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `id` | SMALLINT | Primary key, always `1`. |
-| `data` | JSONB | All user settings: `{ blacklist: string[], blacklist_bypass_preference: "ask" \| "always" \| "never" }`. |
+| `data` | JSONB | All user settings: `{ blacklist: string[], blacklist_bypass_preference: "ask" \| "always" \| "never", auto_scan_enabled: bool, scan_frequency_hours: 1\|3\|6\|12\|24, notification_score_threshold: 0–100, last_scan_at: ISO timestamp \| null, scan_in_progress: bool }`. |
 
 ### Table: `applications` _(planned)_
 
@@ -145,6 +169,15 @@ All routes are prefixed with `/api`.
 | `DELETE` | `/settings/blacklist/{keyword}` | Remove a keyword (no-op if absent). |
 | `GET` | `/settings/blacklist-bypass-preference` | Return the stored bypass preference (`ask` / `always` / `never`). |
 | `PUT` | `/settings/blacklist-bypass-preference` | Persist the bypass preference. |
+| `GET` | `/settings/scan` | Return auto-scan config (`auto_scan_enabled`, `scan_frequency_hours`, `notification_score_threshold`, `last_scan_at`, `scan_in_progress`). |
+| `PUT` | `/settings/scan` | Persist auto-scan config. HTTP 400 when enabling without an active resume. |
+| `POST` | `/settings/scan/trigger` | Trigger an immediate manual scan (background task). HTTP 409 when a scan is already running; 400 when no active resume. Returns `{ status: "started" }`. |
+
+### Notifications
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/notifications/stream` | Long-lived SSE stream. Emits `job_match` events (`job_id`, `job_title`, `match_score`); keepalive comment-pings every 30 s. |
 
 ### Health
 

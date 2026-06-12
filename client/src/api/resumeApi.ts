@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ResumeListItem, ResumeRead, ResumeUpdate } from "@/types/resume";
+import { SETTINGS_KEYS } from "@/api/settingsApi";
 
 const BASE = "/api/resumes";
 
@@ -35,6 +36,11 @@ async function updateResume(id: string, payload: ResumeUpdate): Promise<ResumeRe
   });
   if (!res.ok) throw new Error("Save failed");
   return res.json() as Promise<ResumeRead>;
+}
+
+async function deleteResume(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Delete failed");
 }
 
 async function fetchActiveResume(): Promise<ResumeListItem | null> {
@@ -102,6 +108,25 @@ export function useUpdateResume(): ReturnType<
     onSuccess: (updated) => {
       qc.setQueryData(RESUME_KEYS.detail(updated.id), updated);
       qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
+    },
+  });
+}
+
+/**
+ * Delete a resume. Invalidates the resume list, the active-resume query, and the
+ * scan-settings query (deleting the active resume disables auto-scan server-side).
+ */
+export function useDeleteResume(): ReturnType<
+  typeof useMutation<void, Error, string>
+> {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: deleteResume,
+    onSuccess: (_data, id) => {
+      qc.removeQueries({ queryKey: RESUME_KEYS.detail(id) });
+      void qc.invalidateQueries({ queryKey: RESUME_KEYS.list });
+      void qc.invalidateQueries({ queryKey: RESUME_KEYS.active });
+      void qc.invalidateQueries({ queryKey: SETTINGS_KEYS.scan });
     },
   });
 }

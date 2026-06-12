@@ -11,6 +11,7 @@ import { BlacklistBypassModal } from "@/components/jobs/BlacklistBypassModal";
 import { NoActiveResumeModal } from "@/components/jobs/NoActiveResumeModal";
 import { ActiveResumeSelector } from "@/components/jobs/ActiveResumeSelector";
 import { Toast } from "@/components/resume/Toast";
+import { ScanNowButton } from "@/components/jobs/ScanNowButton";
 import pageStyles from "./Page.module.css";
 import styles from "./JobAddPage.module.css";
 
@@ -215,6 +216,7 @@ export function JobAddPage(): React.JSX.Element {
         <h1 className={pageStyles.pageTitle}>{s.title}</h1>
         <p className={pageStyles.pageSubtitle}>{s.subtitle}</p>
       </header>
+      <ScanNowButton />
 
       {toast && (
         <Toast

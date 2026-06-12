@@ -85,15 +85,26 @@ class ExistingRow:
 
 
 class ScoredRow:
-    """Projection row for the score-cache query."""
+    """Projection row for the score-cache query.
+
+    Mirrors the columns selected by ``load_scored_jobs`` (id, title, description,
+    match_score, score_details, raw_content).
+    """
 
     def __init__(
-        self, title: str, description: str, match_score: int, score_details: dict | None
+        self,
+        title: str,
+        description: str,
+        match_score: int,
+        score_details: dict | None,
+        raw_content: str | None = None,
     ) -> None:
+        self.id = uuid4()
         self.job_title = title
         self.job_description = description
         self.match_score = match_score
         self.score_details = score_details
+        self.raw_content = raw_content
 
 
 class FakeJobSession:

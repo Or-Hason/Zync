@@ -1,0 +1,105 @@
+.section {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.section:last-child {
+  border-bottom: none;
+}
+
+.sectionTitle {
+  margin: 0 0 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.9;
+}
+
+/* ── Apply header row ──────────────────────────────────────────────────────── */
+
+.applyHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.applyMethod {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+  line-height: 1.5;
+}
+
+/* ── View Original Job button ──────────────────────────────────────────────── */
+
+.viewOriginalBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--color-accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-decoration: none;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.viewOriginalBtn:hover {
+  opacity: 0.85;
+}
+
+/* ── Ways to Apply ─────────────────────────────────────────────────────────── */
+
+.waysToApply {
+  margin-top: 16px;
+}
+
+.waysTitle {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.optionsList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.optionChip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: rgba(124, 106, 245, 0.08);
+  border: 1px solid var(--color-accent);
+  border-radius: 16px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 500;
+  color: var(--color-accent);
+  text-decoration: none;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.optionChip:hover {
+  background: rgba(124, 106, 245, 0.16);
+}

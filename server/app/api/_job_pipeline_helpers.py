@@ -11,10 +11,15 @@ import logging
 
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
-from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse, ParsedJob, ScoreResult
+from app.schemas.job import (
+    JobRead,
+    JobScrapeRequest,
+    JobScrapeResponse,
+    ParsedJob,
+    ScoreResult,
+)
 from app.services.job_scraper import (
     ContentTooLargeError,
     JobFetchError,
@@ -100,18 +105,6 @@ def build_scrape_response(
         system_advice=advice,
         score_cached=score_cached,
     )
-
-
-async def persist_job(db: AsyncSession, job: Job) -> None:
-    """Add, flush, and refresh a job row so server defaults are populated.
-
-    Args:
-        db: Active async DB session.
-        job: Transient :class:`Job` instance to persist.
-    """
-    db.add(job)
-    await db.flush()
-    await db.refresh(job)
 
 
 async def resolve_content(payload: JobScrapeRequest) -> str:

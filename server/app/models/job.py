@@ -82,11 +82,18 @@ class Job(Base):
         Boolean, nullable=False, default=False, server_default="false"
     )
     duplicate_chance: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    application_options: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    recommended_apply_method: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Set when a job-match notification is emitted; prevents re-emission on
+    # subsequent scraper ticks for the same job row.
+    notified_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
     )
 
     applications: Mapped[list[Application]] = relationship(

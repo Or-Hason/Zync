@@ -198,7 +198,35 @@ def _parse_requirements(value: Any) -> JobRequirements:
     )
 
 
-def sanitize_job_data(raw: dict[str, Any]) -> ParsedJob:
+APPLY_METHOD_PLATFORM = "Apply via the platform's native button"
+APPLY_METHOD_EMAIL = "Apply via email"
+APPLY_METHOD_ATS = "Apply via external ATS link"
+
+_VALID_APPLY_METHODS = frozenset({APPLY_METHOD_PLATFORM, APPLY_METHOD_EMAIL, APPLY_METHOD_ATS})
+
+
+def _filter_verbatim(options: list[str], raw_text: str) -> list[str]:
+    """Keep only options that appear verbatim (case-insensitive) in the source text."""
+    text_lower = raw_text.lower()
+    return [opt for opt in options if opt.lower() in text_lower]
+
+
+def _is_valid_apply_option(option: str) -> bool:
+    """Return True only for http/https URLs and email addresses.
+
+    Rejects bare job IDs, numbers, or any other non-actionable strings that
+    Ollama may hallucinate as application options.
+    """
+    return option.startswith(("http://", "https://")) or "@" in option
+
+
+def _as_apply_method(value: Any) -> str:
+    """Return the value only when it is one of the three valid method literals."""
+    text = _as_str(value)
+    return text if text in _VALID_APPLY_METHODS else APPLY_METHOD_PLATFORM
+
+
+def sanitize_job_data(raw: dict[str, Any], raw_text: str | None = None) -> ParsedJob:
     """Coerce a raw model JSON object into a validated :class:`ParsedJob`.
 
     Unexpected keys are discarded, missing keys default to ``None`` / ``[]``,
@@ -206,12 +234,18 @@ def sanitize_job_data(raw: dict[str, Any]) -> ParsedJob:
 
     Args:
         raw: The raw JSON object returned by the AI model.
+        raw_text: Original source text used to filter hallucinated application options.
 
     Returns:
         A fully populated :class:`ParsedJob` instance.
     """
     if not isinstance(raw, dict):
         raw = {}
+
+    app_options = _as_str_list(raw.get("application_options"))
+    if raw_text:
+        app_options = _filter_verbatim(app_options, raw_text)
+    app_options = [opt for opt in app_options if _is_valid_apply_option(opt)]
 
     return ParsedJob(
         company_name=_as_str(raw.get("company_name")),
@@ -222,4 +256,6 @@ def sanitize_job_data(raw: dict[str, Any]) -> ParsedJob:
         content_classification=_as_classification(raw.get("content_classification")),
         requirements=_parse_requirements(raw.get("requirements")),
         published_at=_parse_published_at(raw.get("published_at")),
+        application_options=app_options,
+        recommended_apply_method=_as_apply_method(raw.get("recommended_apply_method")),
     )

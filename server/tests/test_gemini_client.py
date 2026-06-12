@@ -1,18 +1,43 @@
-"""Tests for Gemini PII stripping, prompt building, and response parsing."""
+"""Tests for Gemini PII stripping, prompt building, response parsing, and model fallback."""
 
 from __future__ import annotations
 
 import logging
+import time
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
-from app.services.gemini_client import (
+import app.services.gemini_client as _gc_module
+from app.services.gemini_client import GeminiClient, GeminiUnavailableError
+from app.services.gemini_scoring import (
     PII_FIELDS,
-    GeminiClient,
     build_scoring_prompt,
     parse_score_response,
     strip_pii,
 )
+
+from google.genai.errors import ClientError
+
+def _rate_limit_error() -> ClientError:
+    """Return a ClientError representing a hard quota exhaustion (RESOURCE_EXHAUSTED)."""
+    return ClientError(429, {"error": {"code": 429, "message": "rate limited", "status": "RESOURCE_EXHAUSTED"}})
+
+
+def _burst_error() -> ClientError:
+    """Return a ClientError representing a soft burst/RPM limit (no quota keywords)."""
+    return ClientError(429, {"error": {"code": 429, "message": "Too Many Requests", "status": "RATE_LIMIT_EXCEEDED"}})
+
+
+@pytest.fixture()
+def _reset_rotation_state():
+    """Reset module-level rotation globals before and after each test."""
+    _gc_module.current_model_index = 0
+    _gc_module.last_rotated_at = None
+    yield
+    _gc_module.current_model_index = 0
+    _gc_module.last_rotated_at = None
 
 _RESUME = {
     "full_name": "Jane Doe",
@@ -110,16 +135,125 @@ class TestApiKeyNeverLogged:
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         client = GeminiClient(
-            api_key="SECRET_KEY_XYZ", model="gemini-3.5-flash", timeout_seconds=5
+            api_key="SECRET_KEY_XYZ",
+            models=["gemini-3.5-flash"],
+            timeout_seconds=5,
         )
 
         def _boom(_prompt: str) -> str:
             raise RuntimeError("upstream 503 error")
 
-        monkeypatch.setattr(client, "_generate", _boom)
+        # Patch _generate_with_fallback so _boom receives the full prompt arg.
+        monkeypatch.setattr(client, "_generate_with_fallback", _boom)
 
         with caplog.at_level(logging.ERROR):
             result = await client.score("Engineer", "desc", {}, {"skills": ["Python"]})
 
         assert result is None
         assert "SECRET_KEY_XYZ" not in caplog.text
+
+
+class TestModelFallback:
+    """Stateful model rotation on 429 errors."""
+
+    MODELS = ["model-a", "model-b", "model-c"]
+
+    def _client(self) -> GeminiClient:
+        return GeminiClient(api_key="key", models=self.MODELS, timeout_seconds=5)
+
+    def test_rotation_on_rate_limit(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """First model raises 429; second succeeds — result is returned."""
+        client = self._client()
+        calls: list[str] = []
+
+        def _generate(_prompt: str, model: str) -> str:
+            calls.append(model)
+            if model == "model-a":
+                raise _rate_limit_error()
+            return '{"match_score": 80, "rationale": "ok"}'
+
+        monkeypatch.setattr(client, "_generate", _generate)
+        result = client._generate_with_fallback("prompt")
+
+        assert result == '{"match_score": 80, "rationale": "ok"}'
+        assert calls == ["model-a", "model-b"]
+        assert _gc_module.current_model_index == 1
+        assert _gc_module.last_rotated_at is not None
+
+    def test_all_models_exhausted_raises(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """All models rate-limited → GeminiUnavailableError; index left at last rotation."""
+        client = self._client()
+
+        monkeypatch.setattr(
+            client,
+            "_generate",
+            MagicMock(side_effect=_rate_limit_error()),
+        )
+
+        with pytest.raises(GeminiUnavailableError):
+            client._generate_with_fallback("prompt")
+
+        # Index should have rotated through all 3 models (wraps back to 0).
+        assert _gc_module.last_rotated_at is not None
+
+    @pytest.mark.asyncio
+    async def test_exhaustion_propagates_as_503_from_score(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """GeminiUnavailableError is re-raised by score(), not swallowed."""
+        client = self._client()
+
+        def _always_unavailable(_prompt: str) -> str:
+            raise GeminiUnavailableError("all exhausted")
+
+        monkeypatch.setattr(client, "_generate_with_fallback", _always_unavailable)
+
+        with pytest.raises(GeminiUnavailableError):
+            await client.score("Engineer", "desc", {}, {})
+
+    def test_burst_retries_then_rotation(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """Burst 429s retry the current model 3×, then rotate to the next."""
+        client = self._client()
+        calls: list[str] = []
+        slept: list[float] = []
+
+        def _generate(_prompt: str, model: str) -> str:
+            calls.append(model)
+            if model == "model-a":
+                raise _burst_error()
+            return '{"match_score": 55, "rationale": "ok"}'
+
+        monkeypatch.setattr(client, "_generate", _generate)
+        monkeypatch.setattr(time, "sleep", lambda s: slept.append(s))
+
+        result = client._generate_with_fallback("prompt")
+
+        assert result == '{"match_score": 55, "rationale": "ok"}'
+        # 3 attempts on model-a (all burst 429), then 1 successful on model-b.
+        assert calls == ["model-a", "model-a", "model-a", "model-b"]
+        # Back-off sleeps: 2 s after attempt 1, 4 s after attempt 2.
+        assert slept == [2, 4]
+        assert _gc_module.current_model_index == 1
+        assert _gc_module.last_rotated_at is not None
+
+    def test_one_hour_reset(
+        self, monkeypatch: pytest.MonkeyPatch, _reset_rotation_state: None
+    ) -> None:
+        """Index resets to 0 when called more than 1 hour after the last rotation."""
+        client = self._client()
+        _gc_module.current_model_index = 2
+        _gc_module.last_rotated_at = datetime.now(timezone.utc) - timedelta(hours=1, seconds=1)
+
+        monkeypatch.setattr(
+            client, "_generate", lambda _prompt, model: '{"match_score": 50}'
+        )
+        client._generate_with_fallback("prompt")
+
+        # The reset fires before the call, so the successful call uses index 0.
+        assert _gc_module.last_rotated_at is None

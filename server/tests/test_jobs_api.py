@@ -62,7 +62,8 @@ def _patch_fetch(monkeypatch: pytest.MonkeyPatch, html: str) -> None:
     async def _fake_fetch(_url: str) -> str:
         return html
 
-    monkeypatch.setattr("app.api.jobs.fetch_html", _fake_fetch)
+    # fetch_html is called from resolve_content in the pipeline-helpers module.
+    monkeypatch.setattr("app.api._job_pipeline_helpers.fetch_html", _fake_fetch)
 
 
 class TestScrapeFromUrl:
