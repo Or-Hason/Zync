@@ -9,6 +9,7 @@ requests a bare JSON object so parsing stays simple.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -237,20 +238,40 @@ class OllamaClient:
     async def parse_job(self, raw_text: str) -> dict[str, Any]:
         """Send job-post text to Ollama and return the parsed JSON object.
 
+        Retries up to 3 times (with exponential back-off) when the model
+        returns an empty or unparseable response, then returns ``{}`` so the
+        caller can decide whether to drop the job.
+
         Args:
             raw_text: Extracted job-post text.
 
         Returns:
             The raw (unsanitised) JSON object produced by the model, or ``{}``
-            on an unparseable response.
+            after all retries are exhausted.
 
         Raises:
             httpx.HTTPError: If the Ollama request fails at the transport or
                 HTTP-status level.
         """
-        return await self._chat_json(
-            JOB_SYSTEM_PROMPT, _build_job_user_prompt(raw_text)
-        )
+        _MAX_ATTEMPTS = 3
+        delay = 2.0
+        for attempt in range(_MAX_ATTEMPTS):
+            result = await self._chat_json(
+                JOB_SYSTEM_PROMPT, _build_job_user_prompt(raw_text)
+            )
+            if result:
+                return result
+            if attempt < _MAX_ATTEMPTS - 1:
+                logger.warning(
+                    "Ollama returned empty parse (attempt %d/%d) — retrying in %.0fs.",
+                    attempt + 1,
+                    _MAX_ATTEMPTS,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                delay *= 2
+        logger.error("Ollama parse_job returned empty after %d attempts.", _MAX_ATTEMPTS)
+        return {}
 
 
 def get_ollama_client() -> OllamaClient:

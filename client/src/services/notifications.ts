@@ -3,20 +3,12 @@
  *
  * Wraps the Tauri plugin-notification API (desktop) and the browser
  * Notifications API (web) behind a single `fireNotification` call.
- * Navigation on click is decoupled via a custom window event so this module
- * does not need a React Router reference.
+ * Clicking a notification focuses the application window.
  */
 
 import { en } from "@/i18n/en";
 
 const s = en.notifications;
-
-/** Fires a `zync:navigate-job` window event that the useNotifications hook handles. */
-function dispatchNavigateJob(jobId: string): void {
-  window.dispatchEvent(
-    new CustomEvent<{ jobId: string }>("zync:navigate-job", { detail: { jobId } }),
-  );
-}
 
 // ── Tauri ─────────────────────────────────────────────────────────────────
 
@@ -24,8 +16,8 @@ const TAURI_ACTION_TYPE = "job_match";
 let _tauriReady = false;
 
 /**
- * One-time Tauri notification setup: registers the action type and installs
- * the click → navigate handler. Idempotent — safe to call on every mount.
+ * One-time Tauri setup: registers the action type and installs a click
+ * handler that brings the app window to the front. Idempotent.
  */
 export async function setupTauriNotifications(): Promise<void> {
   if (_tauriReady) return;
@@ -33,22 +25,21 @@ export async function setupTauriNotifications(): Promise<void> {
 
   const { registerActionTypes, onAction } =
     await import("@tauri-apps/plugin-notification");
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
 
-  await registerActionTypes([
-    { id: TAURI_ACTION_TYPE, actions: [{ id: "view", title: "View Job", foreground: true }] },
-  ]);
+  await registerActionTypes([{ id: TAURI_ACTION_TYPE, actions: [] }]);
 
-  await onAction((notification) => {
-    const jobId = (notification.extra as { jobId?: string } | undefined)?.jobId;
-    if (jobId) dispatchNavigateJob(jobId);
+  // onAction fires when the user clicks the notification body or any action.
+  // We use it solely to programmatically focus the window.
+  await onAction(async () => {
+    const win = getCurrentWindow();
+    await win.unminimize();
+    await win.show();
+    await win.setFocus();
   });
 }
 
-async function fireTauriNotification(
-  title: string,
-  body: string,
-  jobId: string,
-): Promise<void> {
+async function fireTauriNotification(title: string, body: string): Promise<void> {
   const { isPermissionGranted, requestPermission, sendNotification } =
     await import("@tauri-apps/plugin-notification");
 
@@ -57,16 +48,12 @@ async function fireTauriNotification(
     if (perm !== "granted") return;
   }
 
-  sendNotification({ title, body, actionTypeId: TAURI_ACTION_TYPE, extra: { jobId } });
+  sendNotification({ title, body, actionTypeId: TAURI_ACTION_TYPE });
 }
 
 // ── Web Notifications API ────────────────────────────────────────────────
 
-async function fireWebNotification(
-  title: string,
-  body: string,
-  jobId: string,
-): Promise<void> {
+async function fireWebNotification(title: string, body: string): Promise<void> {
   if (!("Notification" in window) || Notification.permission === "denied") return;
 
   if (Notification.permission !== "granted") {
@@ -75,9 +62,10 @@ async function fireWebNotification(
   }
 
   const notif = new Notification(title, { body });
-  notif.onclick = (): void => {
+  notif.onclick = (e): void => {
+    e.preventDefault();
+    notif.close();
     window.focus();
-    dispatchNavigateJob(jobId);
   };
 }
 
@@ -88,19 +76,17 @@ async function fireWebNotification(
  *
  * @param jobTitle - Job title shown in the notification body.
  * @param matchScore - Match score (0–100).
- * @param jobId - Job UUID for the deep-link target.
  */
 export async function fireNotification(
   jobTitle: string,
   matchScore: number,
-  jobId: string,
 ): Promise<void> {
   const title = s.title;
   const body = s.body.replace("{jobTitle}", jobTitle).replace("{score}", String(matchScore));
 
   if ("__TAURI__" in window) {
-    await fireTauriNotification(title, body, jobId);
+    await fireTauriNotification(title, body);
   } else {
-    await fireWebNotification(title, body, jobId);
+    await fireWebNotification(title, body);
   }
 }

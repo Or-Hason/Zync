@@ -10,10 +10,9 @@ from unittest.mock import MagicMock
 import pytest
 
 import app.services.gemini_client as _gc_module
-from app.services.gemini_client import (
+from app.services.gemini_client import GeminiClient, GeminiUnavailableError
+from app.services.gemini_scoring import (
     PII_FIELDS,
-    GeminiClient,
-    GeminiUnavailableError,
     build_scoring_prompt,
     parse_score_response,
     strip_pii,

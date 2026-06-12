@@ -16,8 +16,11 @@ PII — callers log only ``job_id`` and ``source_type``.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +42,7 @@ KIND_BLACKLISTED = "blacklisted"
 KIND_NO_ACTIVE_RESUME = "no_active_resume"
 KIND_GEMINI_UNCONFIGURED = "gemini_unconfigured"
 KIND_GEMINI_UNAVAILABLE = "gemini_unavailable"
+KIND_OLLAMA_PARSE_FAILURE = "ollama_parse_failure"
 KIND_SCORED = "scored"
 
 
@@ -104,7 +108,12 @@ async def run_job_pipeline(
     Returns:
         A :class:`PipelineOutcome` the caller maps to a response or a log entry.
     """
-    parsed = sanitize_job_data(await ollama.parse_job(content), raw_text=content)
+    raw_parse = await ollama.parse_job(content)
+    if not raw_parse:
+        logger.warning("Ollama returned empty parse after retries — dropping job.")
+        return PipelineOutcome(kind=KIND_OLLAMA_PARSE_FAILURE)
+
+    parsed = sanitize_job_data(raw_parse, raw_text=content)
 
     # Reliable fallback: use raw content when the model omits core_job_posting.
     if not parsed.core_job_posting:

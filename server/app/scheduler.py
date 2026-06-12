@@ -26,10 +26,9 @@ from app.services.settings_store import SettingsStore
 
 logger = logging.getLogger(__name__)
 
-# Base tick cadence in hours — equal to the smallest allowed scan frequency, so
-# any configured frequency is an integer multiple of the tick and is honoured by
-# the per-tick due-check below.
-BASE_TICK_HOURS = 1
+# Base tick cadence in minutes — the scheduler fires frequently so the actual
+# scan runs close to the UI's countdown target rather than up to an hour late.
+BASE_TICK_MINUTES = 5
 
 # Slack subtracted from the due threshold so a tick that fires a few seconds shy
 # of the exact interval (scheduler jitter) still counts the scan as due.
@@ -126,7 +125,7 @@ def start_scheduler() -> None:
     _scheduler.add_job(
         scan_tick,
         trigger="interval",
-        hours=BASE_TICK_HOURS,
+        minutes=BASE_TICK_MINUTES,
         id="jobmaster_auto_scan",
         replace_existing=True,
         max_instances=1,
@@ -134,7 +133,7 @@ def start_scheduler() -> None:
     )
     _scheduler.start()
     logger.info(
-        "Background scheduler started", extra={"tick_hours": BASE_TICK_HOURS}
+        "Background scheduler started", extra={"tick_minutes": BASE_TICK_MINUTES}
     )
 
 
