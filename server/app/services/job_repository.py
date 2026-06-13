@@ -6,12 +6,10 @@ cache) out of the endpoint so it stays focused on HTTP orchestration.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 from sqlalchemy import Integer, cast, func, or_, select, text
-from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
@@ -250,16 +248,24 @@ async def list_jobs(
         stmt = stmt.where(Job.created_at >= cutoff)
 
     if is_unread:
-        stmt = stmt.where(Job.notified_at.is_(None))
+        stmt = stmt.where(Job.viewed_at.is_(None))
 
     if skills:
         for skill in skills:
-            skill_json = cast(json.dumps([skill]), JSONB)
+            # Use EXISTS + jsonb_array_elements_text for reliable case-insensitive matching.
+            # COALESCE to '[]' handles NULL requirements / missing keys gracefully.
             stmt = stmt.where(
-                or_(
-                    Job.requirements["skills"].op("@>")(skill_json),
-                    Job.requirements["recommended_skills"].op("@>")(skill_json),
-                )
+                text(
+                    "EXISTS ("
+                    "  SELECT 1"
+                    "  FROM jsonb_array_elements_text(COALESCE(jobs.requirements->'skills', '[]')) AS s"
+                    "  WHERE lower(s) = lower(:skill)"
+                    "  UNION ALL"
+                    "  SELECT 1"
+                    "  FROM jsonb_array_elements_text(COALESCE(jobs.requirements->'recommended_skills', '[]')) AS s2"
+                    "  WHERE lower(s2) = lower(:skill)"
+                    ")"
+                ).bindparams(skill=skill)
             )
 
     if min_experience is not None:
@@ -272,6 +278,24 @@ async def list_jobs(
 
     rows = (await db.execute(stmt)).scalars().all()
     return list(rows)
+
+
+async def mark_job_read(db: AsyncSession, job_id: UUID) -> None:
+    """Set viewed_at to now() on a job if it has not been viewed yet.
+
+    This is the authoritative write for the Explorer's Unread filter.
+    Intentionally leaves notified_at untouched — that column belongs
+    exclusively to the notification deduplication system.
+    Idempotent — no-op if the job was already marked as read.
+
+    Args:
+        db: Active async DB session.
+        job_id: The job to mark as read.
+    """
+    job = await db.get(Job, job_id)
+    if job is not None and job.viewed_at is None:
+        job.viewed_at = datetime.now(timezone.utc)
+        await db.flush()
 
 
 async def list_job_skills(db: AsyncSession) -> list[str]:

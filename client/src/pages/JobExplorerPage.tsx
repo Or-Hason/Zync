@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SortingState } from "@tanstack/react-table";
 import { en } from "@/i18n/en";
-import { useJobs, useJobSkills, JOBS_KEYS } from "@/api/jobsApi";
+import { useJobs, useJobSkills } from "@/api/jobsApi";
 import { useResumes } from "@/api/resumeApi";
 import type { JobFiltersParams } from "@/types/job";
 import { JobTable } from "@/components/explorer/JobTable";
@@ -16,13 +16,23 @@ import styles from "./JobExplorerPage.module.css";
 const s = en.pages.explorer;
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_FILTERS: JobFiltersParams = {};
+const FILTER_SESSION_KEY = "zync_explorer_filters";
+
+function loadSavedState(): { filters: JobFiltersParams; search: string } {
+  try {
+    const raw = sessionStorage.getItem(FILTER_SESSION_KEY);
+    if (raw) return JSON.parse(raw) as { filters: JobFiltersParams; search: string };
+  } catch { /* ignore malformed data */ }
+  return { filters: EMPTY_FILTERS, search: "" };
+}
 
 export function JobExplorerPage(): React.JSX.Element {
   const qc = useQueryClient();
+  const saved = useMemo(loadSavedState, []);
 
-  const [filters, setFilters] = useState<JobFiltersParams>(EMPTY_FILTERS);
-  const [searchInput, setSearchInput] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filters, setFilters] = useState<JobFiltersParams>(saved.filters);
+  const [searchInput, setSearchInput] = useState(saved.search);
+  const [debouncedSearch, setDebouncedSearch] = useState(saved.search);
   const [sorting, setSorting] = useState<SortingState>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -33,12 +43,17 @@ export function JobExplorerPage(): React.JSX.Element {
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchInput]);
 
+  /** Persist filter state across navigation within the same session. */
+  useEffect(() => {
+    sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({ filters, search: searchInput }));
+  }, [filters, searchInput]);
+
   const activeFilters: JobFiltersParams = useMemo(
     () => ({ ...filters, q: debouncedSearch || undefined }),
     [filters, debouncedSearch],
   );
 
-  const { data: jobs = [], isLoading } = useJobs(activeFilters);
+  const { data: jobs = [], isLoading, isFetching } = useJobs(activeFilters);
   const { data: allSkills = [] } = useJobSkills();
   const { data: resumes = [] } = useResumes();
 
@@ -58,7 +73,7 @@ export function JobExplorerPage(): React.JSX.Element {
   }
 
   function handleRefresh(): void {
-    void qc.invalidateQueries({ queryKey: JOBS_KEYS.list(activeFilters) });
+    void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
   }
 
   return (
@@ -75,9 +90,11 @@ export function JobExplorerPage(): React.JSX.Element {
             type="button"
             className={styles.refreshBtn}
             onClick={handleRefresh}
-            aria-label={s.refresh}
+            aria-label={isFetching ? s.refreshing : s.refresh}
+            disabled={isFetching}
           >
-            {s.refresh}
+            <span className={isFetching ? styles.spinIcon : undefined} aria-hidden>↺</span>
+            {isFetching ? s.refreshing : s.refresh}
           </button>
         </div>
       </header>

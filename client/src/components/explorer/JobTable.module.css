@@ -112,3 +112,17 @@
   color: var(--color-text-dim);
   font-size: 13px;
 }
+
+.roleCellWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unreadDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  flex-shrink: 0;
+}

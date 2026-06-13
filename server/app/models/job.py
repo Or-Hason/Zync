@@ -95,6 +95,12 @@ class Job(Base):
     notified_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # Set when the user opens the job detail page. Drives the Unread filter.
+    # Intentionally separate from notified_at — a notification being sent does
+    # not mean the user has read the job.
+    viewed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
 
     applications: Mapped[list[Application]] = relationship(
         "Application", back_populates="job", cascade="all, delete-orphan"

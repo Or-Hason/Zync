@@ -15,7 +15,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api._job_pipeline_helpers import (
@@ -37,7 +37,7 @@ from app.services.job_pipeline import (
     KIND_NO_ACTIVE_RESUME,
     run_job_pipeline,
 )
-from app.services.job_repository import list_job_skills, list_jobs, load_scored_jobs
+from app.services.job_repository import list_job_skills, list_jobs, load_scored_jobs, mark_job_read
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.score_cache import find_cached_score_raw
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -204,6 +204,24 @@ async def get_job_skills(
     from every job row. Used to populate the Explorer's skills autocomplete.
     """
     return await list_job_skills(db)
+
+
+@router.patch(
+    "/{job_id}/read",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Mark a job as read (sets viewed_at — drives the Unread filter)",
+)
+async def mark_job_read_endpoint(
+    job_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Set ``viewed_at = now()`` on the job when the user opens its detail view.
+
+    Idempotent — no-op if the job was already marked as read.
+    Leaves ``notified_at`` untouched; that column belongs to the notification system.
+    """
+    await mark_job_read(db, job_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(

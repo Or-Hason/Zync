@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobFiltersParams, JobListItem, JobScrapeResponse } from "@/types/job";
 
 const JOB_DETAIL_STALE_MS = 5 * 60 * 1000; // 5 min — serves notification deep-links from cache
@@ -152,7 +152,22 @@ export function useJobs(params: JobFiltersParams): ReturnType<typeof useQuery<Jo
   return useQuery<JobListItem[]>({
     queryKey: JOBS_KEYS.list(params),
     queryFn: () => fetchJobs(params),
-    staleTime: 30_000,
+    staleTime: 0,
+  });
+}
+
+async function markJobRead(jobId: string): Promise<void> {
+  await fetch(`${BASE}/${encodeURIComponent(jobId)}/read`, { method: "PATCH" });
+}
+
+/** Mark a job as read when the user opens its detail view. Invalidates the Explorer list. */
+export function useMarkJobRead(): ReturnType<typeof useMutation<void, Error, string>> {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: markJobRead,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+    },
   });
 }
 

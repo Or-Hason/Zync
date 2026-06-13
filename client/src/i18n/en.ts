@@ -268,6 +268,7 @@ export const en = {
       title: "Job Explorer",
       subtitle: "Browse and filter all your matched jobs",
       refresh: "Refresh",
+      refreshing: "Refreshing…",
       noResults: "No jobs match the current filters.",
       loading: "Loading jobs…",
       shiftClickTooltip: "Shift+Click a column to add a secondary sort",

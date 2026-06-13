@@ -10,3 +10,9 @@
 .backLink:hover {
   color: var(--color-accent);
 }
+
+.cardScroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

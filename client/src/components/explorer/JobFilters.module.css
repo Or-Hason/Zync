@@ -93,12 +93,6 @@
   border-color: var(--color-accent);
 }
 
-.suffix {
-  font-size: 11px;
-  color: var(--color-text-muted);
-  margin-top: 1px;
-  text-align: center;
-}
 
 .clearBtn {
   padding: 7px 12px;

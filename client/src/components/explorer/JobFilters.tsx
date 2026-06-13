@@ -85,7 +85,6 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
           }
           aria-label={f.minScoreLabel}
         />
-        <span className={styles.suffix}>{f.minScoreSuffix}</span>
       </div>
 
       {/* Role (with active CV target role pinned at top) */}

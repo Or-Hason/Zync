@@ -44,6 +44,15 @@ const ONE_DAY_MS = 86_400_000;
 
 const columnHelper = createColumnHelper<JobListItem>();
 
+function readViewedJobs(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem("zync_viewed_jobs");
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
 interface Props {
   jobs: JobListItem[];
   resumeMap: Map<string, string>;
@@ -53,13 +62,24 @@ interface Props {
 
 export function JobTable({ jobs, resumeMap, sorting, onSortingChange }: Props): React.JSX.Element {
   const navigate = useNavigate();
-  /** Track which row IDs have already been animated so refresh doesn't re-fire. */
-  const animatedRef = useRef<Set<string>>(new Set());
+
+  /**
+   * Track which row IDs have already been animated.
+   * Seeded from sessionStorage so navigating back doesn't re-animate viewed jobs.
+   */
+  const animatedRef = useRef<Set<string>>(readViewedJobs());
 
   const columns = [
     columnHelper.accessor("job_title", {
       header: t.columnRole,
-      cell: (info) => info.getValue() ?? "—",
+      cell: (info) => (
+        <span className={styles.roleCellWrap}>
+          {info.row.original.is_unread && (
+            <span className={styles.unreadDot} aria-label="Unread" title="Unread" />
+          )}
+          {info.getValue() ?? "—"}
+        </span>
+      ),
     }),
     columnHelper.accessor("company_name", {
       header: t.columnCompany,

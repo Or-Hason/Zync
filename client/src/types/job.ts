@@ -38,6 +38,7 @@ export interface JobListItem {
   scored_by_resume_id: string | null;
   requirements: JobRequirements | null;
   has_cover_letter: boolean;
+  is_unread: boolean;
 }
 
 export type JobPeriod = "7d" | "30d" | "365d" | "all-time";

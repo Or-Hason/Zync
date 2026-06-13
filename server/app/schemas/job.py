@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, computed_field, field_validator, model_validator
 
 
 class JobRequirements(BaseModel):
@@ -161,6 +161,7 @@ class JobListItem(BaseModel):
     Omits heavy text fields (description, raw_content) to keep the list
     response compact. ``has_cover_letter`` is always ``False`` until the
     cover-letters feature ships (it requires a separate table join).
+    ``is_unread`` is derived from ``notified_at IS NULL`` (MVP proxy).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -175,3 +176,12 @@ class JobListItem(BaseModel):
     scored_by_resume_id: UUID | None
     requirements: JobRequirements | None
     has_cover_letter: bool = False
+    # viewed_at is read from the ORM to compute is_unread but not serialised.
+    # notified_at is intentionally excluded — it belongs to the notification
+    # system and must not be repurposed as a read/unread signal.
+    viewed_at: datetime | None = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_unread(self) -> bool:
+        return self.viewed_at is None
