@@ -4,6 +4,7 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { DashboardPage } from "./pages/DashboardPage";
+import { JobExplorerPage } from "./pages/JobExplorerPage";
 import { JobAddPage } from "./pages/JobAddPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { ResumeManagerPage } from "./pages/ResumeManagerPage";
@@ -30,11 +31,12 @@ const router = createBrowserRouter([
   {
     element: <App />,
     children: [
-      { path: "/",           element: <DashboardPage /> },
-      { path: "/jobs/add",   element: <JobAddPage /> },
-      { path: "/jobs/:id",   element: <JobDetailPage /> },
-      { path: "/resumes",    element: <ResumeManagerPage /> },
-      { path: "/settings",   element: <SettingsPage /> },
+      { path: "/",            element: <DashboardPage /> },
+      { path: "/explorer",    element: <JobExplorerPage /> },
+      { path: "/jobs/add",    element: <JobAddPage /> },
+      { path: "/jobs/:id",    element: <JobDetailPage /> },
+      { path: "/resumes",     element: <ResumeManagerPage /> },
+      { path: "/settings",    element: <SettingsPage /> },
     ],
   },
 ]);

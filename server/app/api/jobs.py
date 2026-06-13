@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,7 @@ from app.api._job_pipeline_helpers import (
 )
 from app.db.session import get_db
 from app.models.job import Job
-from app.schemas.job import JobRead, JobScrapeRequest, JobScrapeResponse, ScoreResult
+from app.schemas.job import JobListItem, JobRead, JobScrapeRequest, JobScrapeResponse, ScoreResult
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_pipeline import (
     KIND_BLACKLISTED,
@@ -37,7 +37,7 @@ from app.services.job_pipeline import (
     KIND_NO_ACTIVE_RESUME,
     run_job_pipeline,
 )
-from app.services.job_repository import load_scored_jobs
+from app.services.job_repository import list_job_skills, list_jobs, load_scored_jobs
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.score_cache import find_cached_score_raw
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -135,6 +135,75 @@ async def scrape_job(
     return build_scrape_response(
         outcome.job, outcome.score, outcome.advice, score_cached=outcome.score_cached
     )
+
+
+@router.get(
+    "",
+    response_model=list[JobListItem],
+    summary="List jobs with optional filtering for the Explorer view",
+)
+async def list_jobs_endpoint(
+    q: str | None = Query(None, description="Free-text search across role, company, description"),
+    period: str | None = Query(None, description="7d / 30d / 365d / all-time"),
+    min_score: int | None = Query(None, ge=0, le=100, description="Minimum match score"),
+    role: str | None = Query(None, description="LIKE filter on job title"),
+    company: str | None = Query(None, description="LIKE filter on company name"),
+    cv_id: str | None = Query(None, description="UUID of the CV used for scoring"),
+    source_type: str | None = Query(None, description="manual or auto"),
+    is_new: bool = Query(False, description="Only jobs created in the last 24 hours"),
+    is_unread: bool = Query(False, description="Only jobs where notified_at IS NULL"),
+    skills: list[str] = Query(default_factory=list, description="Required skills (multi)"),
+    min_experience: int | None = Query(None, ge=0, description="Minimum years of experience"),
+    job_status: str | None = Query(None, alias="status", description="Exact status match"),
+    db: AsyncSession = Depends(get_db),
+) -> list[JobListItem]:
+    """Return up to 200 jobs matching the given filters, newest first.
+
+    All filter params are optional; omitting them returns all jobs (capped at 200).
+    Returns an empty list (not 404) when no jobs match.
+    """
+    from uuid import UUID as _UUID
+
+    cv_uuid: _UUID | None = None
+    if cv_id:
+        try:
+            cv_uuid = _UUID(cv_id)
+        except ValueError:
+            return []
+
+    jobs = await list_jobs(
+        db,
+        q=q,
+        period=period,
+        min_score=min_score,
+        role=role,
+        company=company,
+        cv_id=cv_uuid,
+        source_type=source_type,
+        is_new=is_new,
+        is_unread=is_unread,
+        skills=skills or [],
+        min_experience=min_experience,
+        status=job_status,
+    )
+    logger.info("Jobs listed", extra={"count": len(jobs)})
+    return [JobListItem.model_validate(j) for j in jobs]
+
+
+@router.get(
+    "/skills",
+    response_model=list[str],
+    summary="All distinct skill strings across jobs JSONB requirements (for autocomplete)",
+)
+async def get_job_skills(
+    db: AsyncSession = Depends(get_db),
+) -> list[str]:
+    """Return a deduplicated, alphabetically sorted list of all skills in the DB.
+
+    Unions ``requirements->skills`` and ``requirements->recommended_skills``
+    from every job row. Used to populate the Explorer's skills autocomplete.
+    """
+    return await list_job_skills(db)
 
 
 @router.get(

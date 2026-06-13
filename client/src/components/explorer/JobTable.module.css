@@ -1,0 +1,114 @@
+@keyframes rowHighlight {
+  from { background-color: rgba(124, 106, 245, 0.18); }
+  to   { background-color: transparent; }
+}
+
+.wrapper {
+  overflow-x: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.thSortable {
+  cursor: pointer;
+}
+
+.thSortable:hover {
+  color: var(--color-text);
+}
+
+.sortIcon {
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text);
+  vertical-align: middle;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row {
+  cursor: pointer;
+  transition: background-color var(--transition);
+}
+
+.row:hover {
+  background-color: var(--color-surface-2);
+}
+
+.row:last-child .td {
+  border-bottom: none;
+}
+
+.rowNew {
+  animation: rowHighlight 3s ease-out forwards;
+}
+
+/* Status badges */
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.badgeGreen  { background: rgba(76, 175, 130, 0.18); color: var(--color-success); }
+.badgeBlue   { background: rgba(124, 106, 245, 0.18); color: var(--color-accent-hover); }
+.badgeYellow { background: rgba(230, 169, 53, 0.18); color: var(--color-warning); }
+.badgeRed    { background: rgba(224, 92, 106, 0.18); color: var(--color-error); }
+
+/* Source tags */
+.tagManual {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.tagAuto {
+  font-size: 11px;
+  color: var(--color-accent);
+}
+
+.score {
+  font-weight: 600;
+  color: var(--color-accent-hover);
+}
+
+.dim {
+  color: var(--color-text-dim);
+}
+
+.empty {
+  padding: 48px 0;
+  text-align: center;
+  color: var(--color-text-dim);
+  font-size: 13px;
+}

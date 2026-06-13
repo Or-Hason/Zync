@@ -27,6 +27,37 @@ export interface JobScrapeResponse {
   recommended_apply_method?: string | null;
 }
 
+export interface JobListItem {
+  id: string;
+  job_title: string | null;
+  company_name: string | null;
+  status: string;
+  match_score: number | null;
+  source_type: string;
+  created_at: string;
+  scored_by_resume_id: string | null;
+  requirements: JobRequirements | null;
+  has_cover_letter: boolean;
+}
+
+export type JobPeriod = "7d" | "30d" | "365d" | "all-time";
+
+export interface JobFiltersParams {
+  q?: string;
+  period?: JobPeriod;
+  min_score?: number;
+  role?: string;
+  company?: string;
+  cv_id?: string;
+  source_type?: "manual" | "auto";
+  has_cover_letter?: boolean;
+  is_new?: boolean;
+  is_unread?: boolean;
+  skills?: string[];
+  min_experience?: number;
+  status?: string;
+}
+
 export interface JobRequirements {
   inferred_role?: string | null;
   skills?: string[];

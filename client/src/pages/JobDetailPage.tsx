@@ -3,6 +3,7 @@ import { useJob } from "@/api/jobsApi";
 import { JobCard } from "@/components/jobs/JobCard";
 import { en } from "@/i18n/en";
 import styles from "./Page.module.css";
+import detailStyles from "./JobDetailPage.module.css";
 
 const s = en.pages.jobDetail;
 
@@ -39,6 +40,9 @@ export function JobDetailPage(): React.JSX.Element {
   return (
     <main className={styles.page}>
       <header className={styles.pageHeader}>
+        <Link to="/explorer" className={detailStyles.backLink} aria-label={s.backToExplorer}>
+          {s.backToExplorer}
+        </Link>
         <h1 className={styles.pageTitle}>{s.title}</h1>
       </header>
       <JobCard response={job} />

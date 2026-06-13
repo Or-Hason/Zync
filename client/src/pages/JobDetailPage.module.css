@@ -1,0 +1,12 @@
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  transition: color var(--transition);
+}
+
+.backLink:hover {
+  color: var(--color-accent);
+}

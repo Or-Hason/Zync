@@ -153,3 +153,25 @@ class JobScrapeResponse(JobRead):
     missing_skills: list[str] = Field(default_factory=list)
     system_advice: str | None = None
     score_cached: bool = False
+
+
+class JobListItem(BaseModel):
+    """Lightweight job projection for the Explorer list view.
+
+    Omits heavy text fields (description, raw_content) to keep the list
+    response compact. ``has_cover_letter`` is always ``False`` until the
+    cover-letters feature ships (it requires a separate table join).
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    job_title: str | None
+    company_name: str | None
+    status: str
+    match_score: int | None
+    source_type: str
+    created_at: datetime
+    scored_by_resume_id: UUID | None
+    requirements: JobRequirements | None
+    has_cover_letter: bool = False

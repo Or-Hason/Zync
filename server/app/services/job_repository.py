@@ -6,9 +6,12 @@ cache) out of the endpoint so it stays focused on HTTP orchestration.
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select
+from sqlalchemy import Integer, cast, func, or_, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
@@ -169,6 +172,136 @@ async def count_jobs_for_source(db: AsyncSession, source: str) -> int:
         Job.search_filters["source"].astext == source
     )
     return int((await db.execute(stmt)).scalar_one())
+
+
+async def list_jobs(
+    db: AsyncSession,
+    *,
+    q: str | None = None,
+    period: str | None = None,
+    min_score: int | None = None,
+    role: str | None = None,
+    company: str | None = None,
+    cv_id: UUID | None = None,
+    source_type: str | None = None,
+    is_new: bool = False,
+    is_unread: bool = False,
+    skills: list[str] | None = None,
+    min_experience: int | None = None,
+    status: str | None = None,
+) -> list[Job]:
+    """Return jobs matching the given filters, newest-first, capped at 200 rows.
+
+    Args:
+        db: Active async DB session.
+        q: Free-text search across job_title, company_name, job_description.
+        period: One of ``7d`` / ``30d`` / ``365d`` / ``all-time`` (default).
+        min_score: Only include jobs with match_score >= this value.
+        role: LIKE filter on job_title.
+        company: LIKE filter on company_name.
+        cv_id: Exact match on scored_by_resume_id.
+        source_type: ``"manual"`` or ``"auto"`` (any non-manual source_type).
+        is_new: When True, only jobs created in the last 24 hours.
+        is_unread: When True, only jobs where notified_at IS NULL (proxy for unseen).
+        skills: Each skill must appear in requirements->skills OR ->recommended_skills.
+        min_experience: Lower bound on requirements->years_of_experience.
+        status: Exact job status match.
+
+    Returns:
+        Filtered list of :class:`Job` rows, ordered by ``created_at`` DESC.
+    """
+    stmt = select(Job).order_by(Job.created_at.desc()).limit(200)
+
+    if q:
+        term = f"%{q.lower()}%"
+        stmt = stmt.where(
+            or_(
+                func.lower(Job.job_title).like(term),
+                func.lower(Job.company_name).like(term),
+                func.lower(Job.job_description).like(term),
+            )
+        )
+
+    if period and period != "all-time":
+        days = {"7d": 7, "30d": 30, "365d": 365}.get(period)
+        if days:
+            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+            stmt = stmt.where(Job.created_at >= cutoff)
+
+    if min_score is not None:
+        stmt = stmt.where(Job.match_score >= min_score)
+
+    if role:
+        stmt = stmt.where(func.lower(Job.job_title).like(f"%{role.lower()}%"))
+
+    if company:
+        stmt = stmt.where(func.lower(Job.company_name).like(f"%{company.lower()}%"))
+
+    if cv_id is not None:
+        stmt = stmt.where(Job.scored_by_resume_id == cv_id)
+
+    if source_type == "auto":
+        stmt = stmt.where(Job.source_type != "manual")
+    elif source_type == "manual":
+        stmt = stmt.where(Job.source_type == "manual")
+
+    if is_new:
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        stmt = stmt.where(Job.created_at >= cutoff)
+
+    if is_unread:
+        stmt = stmt.where(Job.notified_at.is_(None))
+
+    if skills:
+        for skill in skills:
+            skill_json = cast(json.dumps([skill]), JSONB)
+            stmt = stmt.where(
+                or_(
+                    Job.requirements["skills"].op("@>")(skill_json),
+                    Job.requirements["recommended_skills"].op("@>")(skill_json),
+                )
+            )
+
+    if min_experience is not None:
+        stmt = stmt.where(
+            cast(Job.requirements["years_of_experience"].astext, Integer) >= min_experience
+        )
+
+    if status:
+        stmt = stmt.where(Job.status == status)
+
+    rows = (await db.execute(stmt)).scalars().all()
+    return list(rows)
+
+
+async def list_job_skills(db: AsyncSession) -> list[str]:
+    """Return all distinct skill strings across all jobs' JSONB requirements.
+
+    Unions the ``skills`` and ``recommended_skills`` arrays from every row so
+    the Explorer's skill autocomplete reflects the full catalogue.
+
+    Args:
+        db: Active async DB session.
+
+    Returns:
+        Alphabetically sorted, deduplicated skill strings.
+    """
+    stmt = text("""
+        SELECT DISTINCT skill
+        FROM (
+            SELECT jsonb_array_elements_text(requirements->'skills') AS skill
+            FROM jobs
+            WHERE requirements IS NOT NULL
+            UNION
+            SELECT jsonb_array_elements_text(requirements->'recommended_skills') AS skill
+            FROM jobs
+            WHERE requirements IS NOT NULL
+        ) t
+        WHERE skill IS NOT NULL AND skill <> ''
+        ORDER BY skill
+    """)
+    rows = (await db.execute(stmt)).all()
+    return [row[0] for row in rows]
 
 
 async def update_job_with_score(
