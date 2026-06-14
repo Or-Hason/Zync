@@ -163,6 +163,9 @@ function Toggle({
         checked={checked}
         onChange={(e): void => onChange(e.target.checked)}
       />
+      <span className={styles.toggleTrack} aria-hidden="true">
+        <span className={styles.toggleThumb} />
+      </span>
       <span className={styles.toggleLabel}>{label}</span>
     </label>
   );

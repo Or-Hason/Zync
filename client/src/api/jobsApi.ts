@@ -122,7 +122,8 @@ export function useCheckCachedScore(
 async function fetchJobs(params: JobFiltersParams): Promise<JobListItem[]> {
   const qs = new URLSearchParams();
   if (params.q) qs.set("q", params.q);
-  if (params.period && params.period !== "all-time") qs.set("period", params.period);
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
   if (params.min_score !== undefined) qs.set("min_score", String(params.min_score));
   if (params.role) qs.set("role", params.role);
   if (params.company) qs.set("company", params.company);

@@ -1,6 +1,6 @@
 import { useResumes, useActiveResume } from "@/api/resumeApi";
 import { en } from "@/i18n/en";
-import type { JobFiltersParams, JobListItem, JobPeriod } from "@/types/job";
+import type { JobFiltersParams, JobListItem } from "@/types/job";
 import styles from "./JobFilters.module.css";
 
 const f = en.pages.explorer.filters;
@@ -37,7 +37,8 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
   ).sort();
 
   const hasActiveFilters =
-    !!filters.period ||
+    !!filters.date_from ||
+    !!filters.date_to ||
     filters.min_score !== undefined ||
     !!filters.role ||
     !!filters.company ||
@@ -46,31 +47,45 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
 
   return (
     <div className={styles.bar} role="search" aria-label="Primary job filters">
-      {/* Global search */}
-      <input
-        type="search"
-        className={styles.search}
-        placeholder={f.search}
-        value={search}
-        onChange={(e): void => onSearchChange(e.target.value)}
-        aria-label={f.search}
-      />
+      {/* Free Search */}
+      <div className={`${styles.field} ${styles.fieldSearch}`}>
+        <span className={styles.miniLabel}>{f.freeSearchLabel}</span>
+        <input
+          type="search"
+          className={styles.search}
+          placeholder={f.search}
+          value={search}
+          onChange={(e): void => onSearchChange(e.target.value)}
+          aria-label={f.freeSearchLabel}
+        />
+      </div>
 
-      {/* Period */}
-      <select
-        className={styles.select}
-        value={filters.period ?? ""}
-        onChange={(e): void => onChange({ period: (e.target.value as JobPeriod) || undefined })}
-        aria-label={f.periodLabel}
-      >
-        <option value="">{f.periodAll}</option>
-        <option value="7d">{f.period7d}</option>
-        <option value="30d">{f.period30d}</option>
-        <option value="365d">{f.period365d}</option>
-      </select>
+      {/* Date Range */}
+      <div className={styles.field}>
+        <span className={styles.miniLabel}>{f.dateRangeLabel}</span>
+        <div className={styles.dateRange}>
+          <input
+            type="date"
+            className={styles.dateInput}
+            value={filters.date_from ?? ""}
+            onChange={(e): void => onChange({ date_from: e.target.value || undefined })}
+            aria-label={f.dateFrom}
+            title={f.dateFrom}
+          />
+          <span className={styles.dateSep}>–</span>
+          <input
+            type="date"
+            className={styles.dateInput}
+            value={filters.date_to ?? ""}
+            onChange={(e): void => onChange({ date_to: e.target.value || undefined })}
+            aria-label={f.dateTo}
+            title={f.dateTo}
+          />
+        </div>
+      </div>
 
       {/* Min Score */}
-      <div className={styles.scoreWrap}>
+      <div className={styles.field}>
         <label className={styles.miniLabel} htmlFor="minScore">{f.minScoreLabel}</label>
         <input
           id="minScore"
@@ -107,7 +122,7 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
         </datalist>
       </div>
 
-      {/* Company (autocomplete text input) */}
+      {/* Company */}
       <div className={styles.field}>
         <label className={styles.miniLabel}>{f.companyLabel}</label>
         <input
@@ -125,17 +140,20 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
       </div>
 
       {/* CV Used */}
-      <select
-        className={styles.select}
-        value={filters.cv_id ?? ""}
-        onChange={(e): void => onChange({ cv_id: e.target.value || undefined })}
-        aria-label={f.cvUsedLabel}
-      >
-        <option value="">{f.cvUsedAll}</option>
-        {resumes.map((r) => (
-          <option key={r.id} value={r.id}>{r.version_name}</option>
-        ))}
-      </select>
+      <div className={styles.field}>
+        <span className={styles.miniLabel}>{f.cvUsedLabel}</span>
+        <select
+          className={styles.select}
+          value={filters.cv_id ?? ""}
+          onChange={(e): void => onChange({ cv_id: e.target.value || undefined })}
+          aria-label={f.cvUsedLabel}
+        >
+          <option value="">{f.cvUsedAll}</option>
+          {resumes.map((r) => (
+            <option key={r.id} value={r.id}>{r.version_name}</option>
+          ))}
+        </select>
+      </div>
 
       {/* Clear button */}
       {hasActiveFilters && (

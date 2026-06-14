@@ -176,7 +176,8 @@ async def list_jobs(
     db: AsyncSession,
     *,
     q: str | None = None,
-    period: str | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
     min_score: int | None = None,
     role: str | None = None,
     company: str | None = None,
@@ -193,14 +194,15 @@ async def list_jobs(
     Args:
         db: Active async DB session.
         q: Free-text search across job_title, company_name, job_description.
-        period: One of ``7d`` / ``30d`` / ``365d`` / ``all-time`` (default).
+        date_from: ISO date string (``YYYY-MM-DD``) — only jobs on/after this date.
+        date_to: ISO date string (``YYYY-MM-DD``) — only jobs on/before this date.
         min_score: Only include jobs with match_score >= this value.
         role: LIKE filter on job_title.
         company: LIKE filter on company_name.
         cv_id: Exact match on scored_by_resume_id.
         source_type: ``"manual"`` or ``"auto"`` (any non-manual source_type).
         is_new: When True, only jobs created in the last 24 hours.
-        is_unread: When True, only jobs where notified_at IS NULL (proxy for unseen).
+        is_unread: When True, only jobs where viewed_at IS NULL (user has not viewed the detail).
         skills: Each skill must appear in requirements->skills OR ->recommended_skills.
         min_experience: Lower bound on requirements->years_of_experience.
         status: Exact job status match.
@@ -220,11 +222,19 @@ async def list_jobs(
             )
         )
 
-    if period and period != "all-time":
-        days = {"7d": 7, "30d": 30, "365d": 365}.get(period)
-        if days:
-            cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-            stmt = stmt.where(Job.created_at >= cutoff)
+    if date_from:
+        try:
+            from_dt = datetime.fromisoformat(date_from).replace(tzinfo=timezone.utc)
+            stmt = stmt.where(Job.created_at >= from_dt)
+        except ValueError:
+            pass
+
+    if date_to:
+        try:
+            to_dt = (datetime.fromisoformat(date_to) + timedelta(days=1)).replace(tzinfo=timezone.utc)
+            stmt = stmt.where(Job.created_at < to_dt)
+        except ValueError:
+            pass
 
     if min_score is not None:
         stmt = stmt.where(Job.match_score >= min_score)

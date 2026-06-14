@@ -1,9 +1,11 @@
-import { useEffect } from "react";
-import { Link, useParams } from "react-router-dom";
-import { useJob, useMarkJobRead } from "@/api/jobsApi";
+import { useState, useEffect } from "react";
+import { Link, useParams, useNavigate } from "react-router-dom";
+import { useJob, useMarkJobRead, useScrapeJob } from "@/api/jobsApi";
+import type { JobScrapeResponse } from "@/types/job";
 import { JobCard } from "@/components/jobs/JobCard";
+import { ActiveResumeSelector } from "@/components/jobs/ActiveResumeSelector";
 import { en } from "@/i18n/en";
-import styles from "./Page.module.css";
+import pageStyles from "./Page.module.css";
 import detailStyles from "./JobDetailPage.module.css";
 
 const s = en.pages.jobDetail;
@@ -13,12 +15,16 @@ const s = en.pages.jobDetail;
  *
  * Loads the job from the React Query cache when available (staleTime 5 min),
  * falling back to GET /api/jobs/:id. Renders the existing JobCard so the full
- * scoring breakdown is visible without re-running the pipeline.
+ * scoring breakdown is visible without re-running the pipeline. Supports
+ * in-page rescoring when the active resume differs from the scored one.
  */
 export function JobDetailPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { data: job, isLoading, isError } = useJob(id ?? null);
   const { mutate: markRead } = useMarkJobRead();
+  const { mutate: requestScore, isPending: isScoringPending } = useScrapeJob();
+  const [localResult, setLocalResult] = useState<JobScrapeResponse | null>(null);
 
   useEffect(() => {
     if (!job?.id) return;
@@ -31,41 +37,57 @@ export function JobDetailPage(): React.JSX.Element {
         sessionStorage.setItem("zync_viewed_jobs", JSON.stringify([...viewed]));
       }
     } catch { /* ignore */ }
-    // Update notified_at on the server so the Unread filter stops matching this job.
     markRead(job.id);
   }, [job?.id, markRead]);
 
   if (isLoading) {
     return (
-      <main className={styles.page}>
-        <p className={styles.placeholder} aria-live="polite">
-          {s.loading}
-        </p>
+      <main className={pageStyles.page}>
+        <p className={pageStyles.placeholder} aria-live="polite">{s.loading}</p>
       </main>
     );
   }
 
   if (isError || !job) {
     return (
-      <main className={styles.page}>
-        <p className={styles.placeholder}>{s.notFound}</p>
+      <main className={pageStyles.page}>
+        <p className={pageStyles.placeholder}>{s.notFound}</p>
         <Link to="/">{s.backToDashboard}</Link>
       </main>
     );
   }
 
+  const displayJob = localResult ?? job;
+
+  function handleRequestScore(): void {
+    requestScore(
+      { existing_job_id: job!.id },
+      { onSuccess: (result) => setLocalResult(result) },
+    );
+  }
+
+  function handleNavigateUpload(): void {
+    void navigate("/resume-manager");
+  }
+
   return (
-    <main className={styles.page}>
-      <header className={styles.pageHeader}>
+    <main className={pageStyles.page}>
+      <header className={detailStyles.header}>
         <Link to="/explorer" className={detailStyles.backLink} aria-label={s.backToExplorer}>
           {s.backToExplorer}
         </Link>
-        <h1 className={styles.pageTitle}>{s.title}</h1>
+        <ActiveResumeSelector />
+        <h1 className={pageStyles.pageTitle}>{s.title}</h1>
       </header>
       {/* cardScroll fills remaining height and provides the scroll — the card itself
           has overflow:hidden so it must not be a direct flex-1 child of the page. */}
       <div className={detailStyles.cardScroll}>
-        <JobCard response={job} />
+        <JobCard
+          response={displayJob}
+          onRequestScore={handleRequestScore}
+          isScoringPending={isScoringPending}
+          onNavigateUpload={handleNavigateUpload}
+        />
       </div>
     </main>
   );

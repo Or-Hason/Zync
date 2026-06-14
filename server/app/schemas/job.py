@@ -74,17 +74,23 @@ class JobScrapeRequest(BaseModel):
 
     @model_validator(mode="after")
     def _require_source(self) -> "JobScrapeRequest":
-        """Reject requests carrying neither a URL nor non-empty raw text.
+        """Reject requests carrying no content source.
 
         Returns:
             The validated request.
 
         Raises:
-            ValueError: If both ``url`` and ``raw_text`` are absent/blank
-                (surfaced by FastAPI as HTTP 422).
+            ValueError: If all three of ``url``, ``raw_text``, and
+                ``existing_job_id`` are absent/blank (surfaced as HTTP 422).
         """
-        if self.url is None and not (self.raw_text and self.raw_text.strip()):
-            raise ValueError("Either 'url' or 'raw_text' must be provided.")
+        if (
+            self.existing_job_id is None
+            and self.url is None
+            and not (self.raw_text and self.raw_text.strip())
+        ):
+            raise ValueError(
+                "Either 'url', 'raw_text', or 'existing_job_id' must be provided."
+            )
         return self
 
 

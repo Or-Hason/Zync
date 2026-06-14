@@ -41,11 +41,10 @@ export interface JobListItem {
   is_unread: boolean;
 }
 
-export type JobPeriod = "7d" | "30d" | "365d" | "all-time";
-
 export interface JobFiltersParams {
   q?: string;
-  period?: JobPeriod;
+  date_from?: string;
+  date_to?: string;
   min_score?: number;
   role?: string;
   company?: string;

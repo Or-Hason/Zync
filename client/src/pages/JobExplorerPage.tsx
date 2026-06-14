@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { type SortingState } from "@tanstack/react-table";
 import { en } from "@/i18n/en";
 import { useJobs, useJobSkills } from "@/api/jobsApi";
-import { useResumes } from "@/api/resumeApi";
+import { useResumes, useActiveResume } from "@/api/resumeApi";
 import type { JobFiltersParams } from "@/types/job";
 import { JobTable } from "@/components/explorer/JobTable";
 import { JobFilters } from "@/components/explorer/JobFilters";
@@ -56,6 +56,7 @@ export function JobExplorerPage(): React.JSX.Element {
   const { data: jobs = [], isLoading, isFetching } = useJobs(activeFilters);
   const { data: allSkills = [] } = useJobSkills();
   const { data: resumes = [] } = useResumes();
+  const { data: activeResume } = useActiveResume();
 
   const resumeMap = useMemo(
     () => new Map(resumes.map((r) => [r.id, r.version_name])),
@@ -122,6 +123,7 @@ export function JobExplorerPage(): React.JSX.Element {
           resumeMap={resumeMap}
           sorting={sorting}
           onSortingChange={setSorting}
+          targetRole={activeResume?.target_role ?? undefined}
         />
       )}
     </main>

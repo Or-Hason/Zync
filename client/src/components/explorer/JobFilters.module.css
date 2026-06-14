@@ -1,7 +1,7 @@
 .bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: 10px;
   padding: 12px 16px;
   background: var(--color-surface);
@@ -9,9 +9,30 @@
   border-radius: var(--radius-lg);
 }
 
-.search {
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.fieldSearch {
   flex: 1;
   min-width: 180px;
+  align-items: stretch;
+}
+
+.miniLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.search {
+  width: 100%;
   padding: 7px 12px;
   background: var(--color-surface-2);
   border: 1px solid var(--color-border);
@@ -24,6 +45,35 @@
 
 .search:focus {
   border-color: var(--color-accent);
+}
+
+/* Date range */
+.dateRange {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dateInput {
+  padding: 6px 8px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 12px;
+  outline: none;
+  width: 130px;
+  transition: border-color var(--transition);
+  color-scheme: dark;
+}
+
+.dateInput:focus {
+  border-color: var(--color-accent);
+}
+
+.dateSep {
+  color: var(--color-text-muted);
+  font-size: 13px;
 }
 
 .select {
@@ -39,20 +89,6 @@
 
 .select:focus {
   border-color: var(--color-accent);
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.miniLabel {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
 }
 
 .autocomplete {
@@ -74,6 +110,7 @@
 .scoreWrap {
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 3px;
 }
 
@@ -92,7 +129,6 @@
 .numberInput:focus {
   border-color: var(--color-accent);
 }
-
 
 .clearBtn {
   padding: 7px 12px;

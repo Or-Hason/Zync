@@ -4,7 +4,9 @@
 }
 
 .wrapper {
-  overflow-x: auto;
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
 }
@@ -16,6 +18,9 @@
 }
 
 .th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   padding: 10px 14px;
   text-align: left;
   font-size: 11px;
@@ -27,6 +32,10 @@
   border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
   user-select: none;
+}
+
+.thCenter {
+  text-align: center;
 }
 
 .thSortable {
@@ -52,6 +61,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: left;
+}
+
+.tdCenter {
+  text-align: center;
 }
 
 .row {
@@ -69,6 +83,22 @@
 
 .rowNew {
   animation: rowHighlight 3s ease-out forwards;
+}
+
+/* Date group separator row */
+.dateSepRow {
+  pointer-events: none;
+}
+
+.dateSepCell {
+  padding: 6px 14px 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-dim);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
 }
 
 /* Status badges */
