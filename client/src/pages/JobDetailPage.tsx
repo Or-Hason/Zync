@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { useJob, useMarkJobRead, useScrapeJob } from "@/api/jobsApi";
+import { useActiveResume } from "@/api/resumeApi";
 import type { JobScrapeResponse } from "@/types/job";
 import { JobCard } from "@/components/jobs/JobCard";
 import { ActiveResumeSelector } from "@/components/jobs/ActiveResumeSelector";
@@ -22,9 +23,22 @@ export function JobDetailPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: job, isLoading, isError } = useJob(id ?? null);
+  const { data: activeResume } = useActiveResume();
   const { mutate: markRead } = useMarkJobRead();
   const { mutate: requestScore, isPending: isScoringPending } = useScrapeJob();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const shouldRescore = searchParams.get("rescore") === "1";
   const [localResult, setLocalResult] = useState<JobScrapeResponse | null>(null);
+
+  useEffect(() => {
+    if (!shouldRescore || !job?.id) return;
+    setSearchParams({}, { replace: true });
+    requestScore(
+      { existing_job_id: job.id },
+      { onSuccess: (result) => setLocalResult(result) },
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldRescore, job?.id]);
 
   useEffect(() => {
     if (!job?.id) return;
@@ -76,8 +90,10 @@ export function JobDetailPage(): React.JSX.Element {
         <Link to="/explorer" className={detailStyles.backLink} aria-label={s.backToExplorer}>
           {s.backToExplorer}
         </Link>
-        <ActiveResumeSelector />
-        <h1 className={pageStyles.pageTitle}>{s.title}</h1>
+        <div className={detailStyles.headerCenter}>
+          <h1 className={pageStyles.pageTitle}>{s.title}</h1>
+          {activeResume && <ActiveResumeSelector layout="column" />}
+        </div>
       </header>
       {/* cardScroll fills remaining height and provides the scroll — the card itself
           has overflow:hidden so it must not be a direct flex-1 child of the page. */}

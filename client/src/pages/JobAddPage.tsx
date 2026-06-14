@@ -67,12 +67,8 @@ export function JobAddPage(): React.JSX.Element {
       originalRequestRef.current = stored.pendingRequest;
       setPartialJob(stored.partialJob);
       if (stored.autoScore) {
-        // Resume was just set as active — kick off scoring immediately.
-        handleScrapeSubmit({
-          ...stored.pendingRequest,
-          force_score: true,
-          existing_job_id: stored.partialJob.id,
-        });
+        // Resume was just set as active — rescore only, skip Ollama and avoid duplicate rows.
+        handleScrapeSubmit({ existing_job_id: stored.partialJob.id });
       } else {
         setPendingRequest(stored.pendingRequest);
       }
@@ -147,9 +143,8 @@ export function JobAddPage(): React.JSX.Element {
   }
 
   function handleRescore(): void {
-    const req = originalRequestRef.current;
-    if (!req) return;
-    handleScrapeSubmit({ ...req, force_score: true, existing_job_id: partialJob?.id ?? undefined });
+    if (!partialJob?.id) return;
+    handleScrapeSubmit({ existing_job_id: partialJob.id });
   }
 
   function handleModalCalculateScore(): void {
@@ -162,14 +157,14 @@ export function JobAddPage(): React.JSX.Element {
    * returnTo stays /jobs/add so the restore useEffect fires on this page.
    */
   function handleNavigateUpload(): void {
-    const req = originalRequestRef.current;
-    if (req && partialJob) {
-      sessionStorage.setItem(
-        RESTORE_KEY,
-        JSON.stringify({ pendingRequest: req, partialJob, autoScore: true }),
-      );
+    if (partialJob) {
+      // Navigate directly back to the job detail page with a rescore trigger,
+      // bypassing the Add Job intermediate step to avoid infinite loading.
+      const returnTo = `/jobs/${partialJob.id}?rescore=1`;
+      navigate(`/resumes?returnTo=${encodeURIComponent(returnTo)}`);
+    } else {
+      navigate("/resumes?returnTo=/jobs/add");
     }
-    navigate("/resumes?returnTo=/jobs/add");
   }
 
   function handleBypassScoreAnyway(remember: boolean): void {

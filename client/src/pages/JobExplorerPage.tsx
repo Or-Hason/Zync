@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SortingState } from "@tanstack/react-table";
 import { en } from "@/i18n/en";
-import { useJobs, useJobSkills } from "@/api/jobsApi";
+import { useJobs, useJobSkills, useMarkAllJobsRead } from "@/api/jobsApi";
 import { useResumes, useActiveResume } from "@/api/resumeApi";
 import type { JobFiltersParams } from "@/types/job";
 import { JobTable } from "@/components/explorer/JobTable";
@@ -54,6 +54,7 @@ export function JobExplorerPage(): React.JSX.Element {
   );
 
   const { data: jobs = [], isLoading, isFetching } = useJobs(activeFilters);
+  const { mutate: markAllRead, isPending: isMarkingAllRead } = useMarkAllJobsRead();
   const { data: allSkills = [] } = useJobSkills();
   const { data: resumes = [] } = useResumes();
   const { data: activeResume } = useActiveResume();
@@ -96,6 +97,17 @@ export function JobExplorerPage(): React.JSX.Element {
           >
             <span className={isFetching ? styles.spinIcon : undefined} aria-hidden>↺</span>
             {isFetching ? s.refreshing : s.refresh}
+          </button>
+          <button
+            type="button"
+            className={styles.refreshBtn}
+            onClick={(): void => {
+              if (window.confirm(s.markAllReadConfirm)) markAllRead();
+            }}
+            aria-label={s.markAllRead}
+            disabled={isMarkingAllRead}
+          >
+            {s.markAllRead}
           </button>
         </div>
       </header>

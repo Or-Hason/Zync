@@ -35,9 +35,18 @@ from app.services.job_pipeline import (
     KIND_GEMINI_UNAVAILABLE,
     KIND_GEMINI_UNCONFIGURED,
     KIND_NO_ACTIVE_RESUME,
+    KIND_OLLAMA_PARSE_FAILURE,
+    rescore_job,
     run_job_pipeline,
 )
-from app.services.job_repository import list_job_skills, list_jobs, load_scored_jobs, mark_job_read
+from app.services.job_repository import (
+    get_child_resume_ids,
+    list_job_skills,
+    list_jobs,
+    load_scored_jobs,
+    mark_all_jobs_read,
+    mark_job_read,
+)
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.score_cache import find_cached_score_raw
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -68,19 +77,33 @@ async def scrape_job(
         (``force_score`` false); HTTP 400 when no active resume exists.
         502/422 on fetch/size errors; 500 if Gemini is not configured.
     """
-    content = await resolve_content(payload)
-    source_url = str(payload.url) if payload.url else None
-
-    outcome = await run_job_pipeline(
-        db=db,
-        ollama=ollama,
-        gemini=gemini,
-        store=store,
-        content=content,
-        source_url=source_url,
-        force_score=payload.force_score,
-        existing_job_id=payload.existing_job_id,
+    is_rescore_only = (
+        payload.existing_job_id is not None
+        and payload.url is None
+        and not (payload.raw_text and payload.raw_text.strip())
     )
+
+    if is_rescore_only:
+        outcome = await rescore_job(db=db, gemini=gemini, job_id=payload.existing_job_id)
+    else:
+        content = await resolve_content(payload)
+        source_url = str(payload.url) if payload.url else None
+        outcome = await run_job_pipeline(
+            db=db,
+            ollama=ollama,
+            gemini=gemini,
+            store=store,
+            content=content,
+            source_url=source_url,
+            force_score=payload.force_score,
+            existing_job_id=payload.existing_job_id,
+        )
+
+    if outcome.kind == KIND_OLLAMA_PARSE_FAILURE:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="AI parsing is temporarily unavailable. Please try again shortly.",
+        )
 
     if outcome.kind == KIND_CLASSIFICATION_REJECTED:
         logger.info(
@@ -172,7 +195,7 @@ async def list_jobs_endpoint(
         except ValueError:
             return []
 
-    jobs = await list_jobs(
+    rows = await list_jobs(
         db,
         q=q,
         date_from=date_from,
@@ -188,8 +211,27 @@ async def list_jobs_endpoint(
         min_experience=min_experience,
         status=job_status,
     )
-    logger.info("Jobs listed", extra={"count": len(jobs)})
-    return [JobListItem.model_validate(j) for j in jobs]
+
+    # Aggregate all resume IDs from child rescore rows.
+    parent_ids = [j.id for j in rows]
+    child_cv_map = await get_child_resume_ids(db, parent_ids)
+
+    items: list[JobListItem] = []
+    for j in rows:
+        all_cv_ids = list(
+            dict.fromkeys(
+                [j.scored_by_resume_id] + child_cv_map.get(j.id, [])
+                if j.scored_by_resume_id
+                else child_cv_map.get(j.id, [])
+            )
+        )
+        item = JobListItem.model_validate(j).model_copy(
+            update={"scored_resume_ids": all_cv_ids}
+        )
+        items.append(item)
+
+    logger.info("Jobs listed", extra={"count": len(items)})
+    return items
 
 
 @router.get(
@@ -206,6 +248,23 @@ async def get_job_skills(
     from every job row. Used to populate the Explorer's skills autocomplete.
     """
     return await list_job_skills(db)
+
+
+@router.patch(
+    "/read-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Mark all unread jobs as read",
+)
+async def mark_all_jobs_read_endpoint(
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Set viewed_at = now() on every job where viewed_at IS NULL.
+
+    Idempotent — jobs already read are unaffected.
+    """
+    count = await mark_all_jobs_read(db)
+    logger.info("Marked all jobs as read", extra={"count": count})
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch(

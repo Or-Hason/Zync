@@ -210,7 +210,12 @@ async def list_jobs(
     Returns:
         Filtered list of :class:`Job` rows, ordered by ``created_at`` DESC.
     """
-    stmt = select(Job).order_by(Job.created_at.desc()).limit(200)
+    stmt = (
+        select(Job)
+        .where(Job.canonical_job_id.is_(None))
+        .order_by(Job.created_at.desc())
+        .limit(200)
+    )
 
     if q:
         term = f"%{q.lower()}%"
@@ -288,6 +293,52 @@ async def list_jobs(
 
     rows = (await db.execute(stmt)).scalars().all()
     return list(rows)
+
+
+async def get_child_resume_ids(
+    db: AsyncSession, parent_ids: list[UUID]
+) -> dict[UUID, list[UUID]]:
+    """Return a map of canonical job ID → list of resume IDs from child rescore rows.
+
+    Args:
+        db: Active async DB session.
+        parent_ids: Canonical job IDs to look up child CVs for.
+
+    Returns:
+        Dict mapping each parent ID to a list of scored_by_resume_id values.
+    """
+    if not parent_ids:
+        return {}
+    stmt = select(Job.canonical_job_id, Job.scored_by_resume_id).where(
+        Job.canonical_job_id.in_(parent_ids),
+        Job.scored_by_resume_id.isnot(None),
+    )
+    rows = (await db.execute(stmt)).all()
+    result: dict[UUID, list[UUID]] = {}
+    for row in rows:
+        result.setdefault(row.canonical_job_id, []).append(row.scored_by_resume_id)
+    return result
+
+
+async def mark_all_jobs_read(db: AsyncSession) -> int:
+    """Set viewed_at to now() on every unread job row.
+
+    Args:
+        db: Active async DB session.
+
+    Returns:
+        The number of rows updated.
+    """
+    from sqlalchemy import update
+
+    now = datetime.now(timezone.utc)
+    result = await db.execute(
+        update(Job)
+        .where(Job.viewed_at.is_(None))
+        .values(viewed_at=now)
+    )
+    await db.flush()
+    return result.rowcount
 
 
 async def mark_job_read(db: AsyncSession, job_id: UUID) -> None:

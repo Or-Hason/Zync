@@ -180,6 +180,9 @@ class JobListItem(BaseModel):
     source_type: str
     created_at: datetime
     scored_by_resume_id: UUID | None
+    # All resume IDs that have produced a score for this job (canonical + child rescores).
+    # Populated by the list endpoint after querying child rows; not stored on the ORM object.
+    scored_resume_ids: list[UUID] = Field(default_factory=list)
     requirements: JobRequirements | None
     has_cover_letter: bool = False
     # viewed_at is read from the ORM to compute is_unread but not serialised.

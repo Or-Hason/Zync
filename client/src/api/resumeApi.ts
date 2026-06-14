@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ResumeListItem, ResumeRead, ResumeUpdate } from "@/types/resume";
 import { SETTINGS_KEYS } from "@/api/settingsApi";
 
@@ -131,11 +131,15 @@ export function useDeleteResume(): ReturnType<
   });
 }
 
-/** Fetch the currently active resume (null if none). */
+/** Fetch the currently active resume (null if none).
+ *  placeholderData keeps the previous value during background refetches so
+ *  role-pinning in the Explorer doesn't flash when the resume selection changes.
+ */
 export function useActiveResume(): ReturnType<typeof useQuery<ResumeListItem | null>> {
   return useQuery<ResumeListItem | null>({
     queryKey: RESUME_KEYS.active,
     queryFn: fetchActiveResume,
+    placeholderData: keepPreviousData,
   });
 }
 

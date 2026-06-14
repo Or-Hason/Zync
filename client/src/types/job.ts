@@ -36,6 +36,8 @@ export interface JobListItem {
   source_type: string;
   created_at: string;
   scored_by_resume_id: string | null;
+  /** All resume IDs that have scored this job (canonical + rescore children). */
+  scored_resume_ids: string[];
   requirements: JobRequirements | null;
   has_cover_letter: boolean;
   is_unread: boolean;

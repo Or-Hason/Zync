@@ -6,11 +6,16 @@ import styles from "./ActiveResumeSelector.module.css";
 
 const s = en.pages.jobAdd.activeResumeSelector;
 
+interface Props {
+  layout?: "row" | "column";
+}
+
 /**
  * Selector widget for choosing the active resume.
  * Shows current active resume and lists all available resumes.
+ * @param layout - "row" (default) places label inline; "column" stacks label above dropdown, centered.
  */
-export function ActiveResumeSelector(): React.JSX.Element {
+export function ActiveResumeSelector({ layout = "row" }: Props): React.JSX.Element {
   const { data: resumes = [] } = useResumes();
   const { data: activeResume } = useActiveResume();
   const { mutate: setActive } = useSetActiveResume();
@@ -24,8 +29,8 @@ export function ActiveResumeSelector(): React.JSX.Element {
   const displayName = activeResume?.version_name || s.noResume;
 
   return (
-    <div className={styles.selector}>
-      <label className={styles.label}>{s.label}</label>
+    <div className={`${styles.selector} ${layout === "column" ? styles.selectorColumn : ""}`}>
+      <label className={`${styles.label} ${layout === "column" ? styles.labelColumn : ""}`}>{s.label}</label>
       <div className={styles.dropdown}>
         <button
           className={styles.button}

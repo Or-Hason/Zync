@@ -1,4 +1,4 @@
-import { useRef, useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useReactTable,
@@ -60,7 +60,7 @@ function statusClass(status: string): string {
 
 /** Columns that stay left-aligned (all others are centered). */
 function isLeftAligned(colId: string): boolean {
-  return colId === "job_title" || colId === "scored_by_resume_id";
+  return colId === "job_title" || colId === "scored_resume_ids";
 }
 
 const ONE_DAY_MS = 86_400_000;
@@ -96,27 +96,18 @@ export function JobTable({ jobs, resumeMap, sorting, onSortingChange, targetRole
    */
   const animatedRef = useRef<Set<string>>(readViewedJobs());
 
-  const columns = [
+  const columns = useMemo(() => [
     columnHelper.accessor("job_title", {
       header: t.columnRole,
       sortingFn: (rowA, rowB) => {
-        // `sorting` is closed over from props — re-evaluated each render.
-        const isPrimary = sorting[0]?.id === "job_title";
-        const aTitle = (rowA.original.job_title ?? "").toLowerCase();
-        const bTitle = (rowB.original.job_title ?? "").toLowerCase();
-        const target = (targetRole ?? "").toLowerCase();
-
-        if (isPrimary && target) {
-          const aPin = aTitle === target;
-          const bPin = bTitle === target;
-          if (aPin !== bPin) {
-            // Counter TanStack's direction flip so pinned rows always appear at top.
-            const isDesc = sorting[0]?.desc ?? false;
-            if (aPin) return isDesc ? 1 : -1;
-            return isDesc ? -1 : 1;
-          }
+        const a = (rowA.original.job_title ?? "").toLowerCase().trim();
+        const b = (rowB.original.job_title ?? "").toLowerCase().trim();
+        const target = targetRole?.toLowerCase().trim() ?? "";
+        if (target) {
+          if (a === target && b !== target) return -1;
+          if (a !== target && b === target) return 1;
         }
-        return aTitle.localeCompare(bTitle);
+        return a < b ? -1 : a > b ? 1 : 0;
       },
       cell: (info) => (
         <span className={styles.roleCellWrap}>
@@ -169,15 +160,27 @@ export function JobTable({ jobs, resumeMap, sorting, onSortingChange, targetRole
           ? <span className={styles.tagManual}>{t.sourceManual}</span>
           : <span className={styles.tagAuto}>{t.sourceAuto}</span>,
     }),
-    columnHelper.accessor("scored_by_resume_id", {
+    columnHelper.accessor("scored_resume_ids", {
       header: t.columnCv,
       enableSorting: false,
       cell: (info) => {
-        const id = info.getValue();
-        return <span className={styles.dim}>{id ? (resumeMap.get(id) ?? "—") : "—"}</span>;
+        const ids = info.getValue();
+        const names = ids.map((id) => resumeMap.get(id)).filter(Boolean) as string[];
+        if (names.length === 0) return <span className={styles.dim}>—</span>;
+        if (names.length === 1) return <span className={styles.dim}>{names[0]}</span>;
+        return (
+          <span
+            className={styles.dim}
+            title={names.join("\n")}
+            style={{ cursor: "help" }}
+          >
+            {names[0]}{" "}
+            <span className={styles.cvMoreBadge}>+{names.length - 1}</span>
+          </span>
+        );
       },
     }),
-  ];
+  ], [resumeMap, targetRole]);
 
   const table = useReactTable({
     data: jobs,
@@ -194,31 +197,30 @@ export function JobTable({ jobs, resumeMap, sorting, onSortingChange, targetRole
     column.toggleSorting(undefined, e.shiftKey);
   }
 
-  const tableRows = table.getRowModel().rows;
-  const colCount = columns.length;
+  const isPrimaryDateDesc = sorting[0]?.id === "created_at" && sorting[0]?.desc === true;
 
-  /** Build row entries with date-group separators when primary sort is Date ↓ */
-  const rowEntries = useMemo((): RowEntry[] => {
-    const isPrimaryDateDesc =
-      sorting[0]?.id === "created_at" && sorting[0]?.desc === true;
+  const sortedRows = table.getRowModel().rows;
 
-    if (!isPrimaryDateDesc) {
-      return tableRows.map((row) => ({ kind: "data", row }));
-    }
-
+  // Inject date group separator rows when primary sort is Date Added ↓.
+  const rowEntries: RowEntry[] = [];
+  if (isPrimaryDateDesc) {
     const now = Date.now();
-    const entries: RowEntry[] = [];
     let lastGroup = "";
-    for (const row of tableRows) {
+    for (const row of sortedRows) {
       const group = getDateGroup(row.original.created_at, now);
       if (group !== lastGroup) {
-        entries.push({ kind: "sep", label: group });
+        rowEntries.push({ kind: "sep", label: group });
         lastGroup = group;
       }
-      entries.push({ kind: "data", row });
+      rowEntries.push({ kind: "data", row });
     }
-    return entries;
-  }, [tableRows, sorting]);
+  } else {
+    for (const row of sortedRows) {
+      rowEntries.push({ kind: "data", row });
+    }
+  }
+
+  const colCount = columns.length;
 
   if (jobs.length === 0) {
     return <p className={styles.empty}>{t.noData}</p>;
@@ -270,7 +272,11 @@ export function JobTable({ jobs, resumeMap, sorting, onSortingChange, targetRole
             return (
               <tr
                 key={job.id}
-                className={`${styles.row} ${shouldAnimate ? styles.rowNew : ""}`}
+                className={[
+                  styles.row,
+                  (job.is_unread && isNew) ? styles.rowUnread : "",
+                  shouldAnimate ? styles.rowNew : "",
+                ].filter(Boolean).join(" ")}
                 onClick={(): void => { void navigate(`/jobs/${job.id}`); }}
                 role="button"
                 tabIndex={0}

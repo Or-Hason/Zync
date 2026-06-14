@@ -101,6 +101,12 @@ class Job(Base):
     viewed_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
+    # When set, this row is a rescore variant of the canonical job row it points to.
+    # Canonical rows have canonical_job_id = NULL.
+    canonical_job_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL", name="fk_jobs_canonical_job"),
+        nullable=True,
+    )
 
     applications: Mapped[list[Application]] = relationship(
         "Application", back_populates="job", cascade="all, delete-orphan"

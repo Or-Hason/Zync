@@ -5,11 +5,21 @@
   gap: 8px;
 }
 
+.selectorColumn {
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
 .label {
   font-size: 13px;
   font-weight: 500;
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+.labelColumn {
+  text-align: center;
 }
 
 .dropdown {

@@ -269,6 +269,8 @@ export const en = {
       subtitle: "Browse and filter all your matched jobs",
       refresh: "Refresh",
       refreshing: "Refreshing…",
+      markAllRead: "Mark all read",
+      markAllReadConfirm: "Mark all jobs as read?",
       noResults: "No jobs match the current filters.",
       loading: "Loading jobs…",
       shiftClickTooltip: "Shift+Click a column to add a secondary sort",

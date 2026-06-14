@@ -172,6 +172,22 @@ export function useMarkJobRead(): ReturnType<typeof useMutation<void, Error, str
   });
 }
 
+async function markAllJobsRead(): Promise<void> {
+  const res = await fetch(`${BASE}/read-all`, { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark all jobs as read");
+}
+
+/** Mark every unread job as read. Invalidates the Explorer list on success. */
+export function useMarkAllJobsRead(): ReturnType<typeof useMutation<void, Error, void>> {
+  const qc = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: markAllJobsRead,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+    },
+  });
+}
+
 /** Fetch all distinct skill strings from DB requirements JSONB (for autocomplete). */
 export function useJobSkills(): ReturnType<typeof useQuery<string[]>> {
   return useQuery<string[]>({
