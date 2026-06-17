@@ -2,27 +2,52 @@ import { useEffect, useRef, useState } from "react";
 import { en } from "@/i18n/en";
 import styles from "./UploadZone.module.css";
 
-const ACCEPTED_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
-const ACCEPTED_EXTENSIONS = [".pdf", ".docx"];
-const MAX_BYTES = 10 * 1024 * 1024;
+const RESUME_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
+const RESUME_EXTENSIONS = [".pdf", ".docx"];
+const RESUME_MAX_BYTES = 10 * 1024 * 1024;
 
 interface UploadZoneProps {
   onFile: (file: File) => void;
+  /** MIME types to accept. Defaults to PDF + DOCX (resume use case). */
+  acceptedTypes?: string[];
+  /** File extensions for the <input accept> attribute. Defaults to .pdf + .docx. */
+  acceptedExtensions?: string[];
+  /** Max file size in bytes. Defaults to 10 MB. */
+  maxBytes?: number;
+  dropText?: string;
+  orText?: string;
+  browseText?: string;
+  hint?: string;
+  invalidTypeText?: string;
+  tooLargeText?: string;
 }
 
 /**
  * Drag-and-drop + click-to-browse upload zone.
  * Validates MIME type and file size client-side before handing off.
+ * Accepts configurable file types; defaults to the resume (PDF/DOCX) use case.
+ *
  * @param onFile - Called with the validated File object.
  */
-export function UploadZone({ onFile }: UploadZoneProps): React.JSX.Element {
+export function UploadZone({
+  onFile,
+  acceptedTypes = RESUME_TYPES,
+  acceptedExtensions = RESUME_EXTENSIONS,
+  maxBytes = RESUME_MAX_BYTES,
+  dropText = en.pages.resumeManager.uploadDrop,
+  orText = en.pages.resumeManager.uploadOr,
+  browseText = en.pages.resumeManager.uploadBrowse,
+  hint = en.pages.resumeManager.uploadHint,
+  invalidTypeText = en.pages.resumeManager.uploadInvalidType,
+  tooLargeText = en.pages.resumeManager.uploadTooLarge,
+}: UploadZoneProps): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function validate(file: File): string | null {
-    if (!ACCEPTED_TYPES.includes(file.type)) return en.pages.resumeManager.uploadInvalidType;
-    if (file.size > MAX_BYTES) return en.pages.resumeManager.uploadTooLarge;
+    if (!acceptedTypes.includes(file.type)) return invalidTypeText;
+    if (file.size > maxBytes) return tooLargeText;
     return null;
   }
 
@@ -68,14 +93,16 @@ export function UploadZone({ onFile }: UploadZoneProps): React.JSX.Element {
         const path = (p.paths ?? [])[0];
         if (!path) return;
 
-        const fileName = path.replace(/\\/g, "/").split("/").pop() ?? "resume";
+        const fileName = path.replace(/\\/g, "/").split("/").pop() ?? "file";
         const ext = fileName.split(".").pop()?.toLowerCase();
         const mime =
           ext === "pdf"
             ? "application/pdf"
             : ext === "docx"
               ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              : "";
+              : ext === "txt"
+                ? "text/plain"
+                : "";
         try {
           const bytes: number[] = await invoke<number[]>("read_file_bytes", { path });
           handleFileRef.current(new File([new Uint8Array(bytes)], fileName, { type: mime }));
@@ -99,21 +126,21 @@ export function UploadZone({ onFile }: UploadZoneProps): React.JSX.Element {
       onClick={(): void => inputRef.current?.click()}
       role="button"
       tabIndex={0}
-      aria-label={en.pages.resumeManager.uploadDrop}
+      aria-label={dropText}
       onKeyDown={(e): void => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
     >
       <input
         ref={inputRef}
         type="file"
-        accept={ACCEPTED_EXTENSIONS.join(",")}
+        accept={acceptedExtensions.join(",")}
         className={styles.hiddenInput}
         onChange={onInputChange}
-        aria-label={en.pages.resumeManager.uploadBrowse}
+        aria-label={browseText}
       />
-      <span className={styles.dropText}>{en.pages.resumeManager.uploadDrop}</span>
-      <span className={styles.orText}>{en.pages.resumeManager.uploadOr}</span>
-      <span className={styles.browseBtn}>{en.pages.resumeManager.uploadBrowse}</span>
-      <span className={styles.hint}>{en.pages.resumeManager.uploadHint}</span>
+      <span className={styles.dropText}>{dropText}</span>
+      <span className={styles.orText}>{orText}</span>
+      <span className={styles.browseBtn}>{browseText}</span>
+      <span className={styles.hint}>{hint}</span>
       {validationError && (
         <span className={styles.validationError} role="alert" aria-live="polite">
           {validationError}

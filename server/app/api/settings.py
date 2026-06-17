@@ -1,4 +1,4 @@
-"""Settings API: blacklist keyword management, bypass preference, and scan control."""
+"""Settings API: blacklist keyword management, bypass preference, scan control, and letter template."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.resumes_active import load_active_resume
@@ -16,9 +16,12 @@ from app.schemas.settings import (
     BlacklistResponse,
     BypassPreferenceModel,
     KeywordRequest,
+    LetterTemplateResponse,
+    LetterTemplateTextUpdate,
     ScanSettings,
 )
 from app.scraper.jobmaster import run_scan
+from app.services.cover_letter_service import extract_text
 from app.services.gemini_client import get_gemini_client
 from app.services.ollama_client import get_ollama_client
 from app.services.settings_store import (
@@ -187,6 +190,82 @@ async def trigger_manual_scan(
     asyncio.create_task(_run_manual_scan())
     logger.info("Manual scan triggered.")
     return {"status": "started"}
+
+
+@router.get(
+    "/letter-template",
+    response_model=LetterTemplateResponse,
+    summary="Get the personal letter template",
+)
+async def get_letter_template(
+    store: SettingsStore = Depends(get_settings_store),
+) -> LetterTemplateResponse:
+    """Return the stored letter template text and original filename."""
+    result = await store.get_letter_template()
+    return LetterTemplateResponse(**result)
+
+
+@router.put(
+    "/letter-template",
+    response_model=LetterTemplateResponse,
+    summary="Upload and save a letter template file",
+)
+async def save_letter_template(
+    file: UploadFile,
+    store: SettingsStore = Depends(get_settings_store),
+    db: AsyncSession = Depends(get_db),
+) -> LetterTemplateResponse:
+    """Extract text from a TXT or DOCX upload and persist it as the letter template.
+
+    Raises:
+        HTTPException: 415 if the file extension is not .txt or .docx.
+    """
+    filename = file.filename or "template"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext not in {"txt", "docx"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only TXT and DOCX files are accepted for letter templates.",
+        )
+
+    raw_bytes = await file.read()
+    text = extract_text(raw_bytes, filename)
+    result = await store.set_letter_template(text=text, filename=filename)
+    await db.commit()
+    logger.info("Letter template saved", extra={"filename": filename})
+    return LetterTemplateResponse(**result)
+
+
+@router.patch(
+    "/letter-template",
+    response_model=LetterTemplateResponse,
+    summary="Update letter template text from the inline editor",
+)
+async def update_letter_template_text(
+    payload: LetterTemplateTextUpdate,
+    store: SettingsStore = Depends(get_settings_store),
+    db: AsyncSession = Depends(get_db),
+) -> LetterTemplateResponse:
+    """Persist edited template text without re-uploading a file."""
+    result = await store.update_letter_template_text(payload.text)
+    await db.commit()
+    return LetterTemplateResponse(**result)
+
+
+@router.delete(
+    "/letter-template",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    summary="Delete the letter template",
+)
+async def delete_letter_template(
+    store: SettingsStore = Depends(get_settings_store),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Remove the letter template from the settings blob."""
+    await store.delete_letter_template()
+    await db.commit()
+    logger.info("Letter template deleted.")
 
 
 @router.get(

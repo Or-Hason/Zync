@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.cover_letters import router as cover_letters_router
 from app.api.health import router as health_router
 from app.api.jobs import router as jobs_router
 from app.api.notifications import router as notifications_router
@@ -14,5 +15,6 @@ api_router.include_router(health_router)
 api_router.include_router(resumes_active_router)
 api_router.include_router(resumes_router)
 api_router.include_router(jobs_router)
+api_router.include_router(cover_letters_router)
 api_router.include_router(settings_router)
 api_router.include_router(notifications_router)

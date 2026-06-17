@@ -5,11 +5,14 @@ import { useActiveResume } from "@/api/resumeApi";
 import type { JobScrapeResponse } from "@/types/job";
 import { JobCard } from "@/components/jobs/JobCard";
 import { ActiveResumeSelector } from "@/components/jobs/ActiveResumeSelector";
+import { CoverLetterTab } from "@/components/jobs/CoverLetterTab";
 import { en } from "@/i18n/en";
 import pageStyles from "./Page.module.css";
 import detailStyles from "./JobDetailPage.module.css";
 
 const s = en.pages.jobDetail;
+
+type DetailTab = "details" | "cover-letter";
 
 /**
  * Deep-link destination for job-match notifications.
@@ -29,6 +32,7 @@ export function JobDetailPage(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
   const shouldRescore = searchParams.get("rescore") === "1";
   const [localResult, setLocalResult] = useState<JobScrapeResponse | null>(null);
+  const [activeTab, setActiveTab] = useState<DetailTab>("details");
 
   useEffect(() => {
     if (!shouldRescore || !job?.id) return;
@@ -81,7 +85,12 @@ export function JobDetailPage(): React.JSX.Element {
   }
 
   function handleNavigateUpload(): void {
-    void navigate("/resume-manager");
+    void navigate("/documents");
+  }
+
+  function handleTabChange(tab: DetailTab): void {
+    setActiveTab(tab);
+    window.scrollTo(0, 0);
   }
 
   return (
@@ -95,16 +104,42 @@ export function JobDetailPage(): React.JSX.Element {
           {activeResume && <ActiveResumeSelector layout="column" />}
         </div>
       </header>
-      {/* cardScroll fills remaining height and provides the scroll — the card itself
-          has overflow:hidden so it must not be a direct flex-1 child of the page. */}
-      <div className={detailStyles.cardScroll}>
-        <JobCard
-          response={displayJob}
-          onRequestScore={handleRequestScore}
-          isScoringPending={isScoringPending}
-          onNavigateUpload={handleNavigateUpload}
-        />
+
+      <div className={detailStyles.tabBar} role="tablist" aria-label="Job detail sections">
+        <button
+          role="tab"
+          aria-selected={activeTab === "details"}
+          className={`${detailStyles.tabBtn} ${activeTab === "details" ? detailStyles.tabBtnActive : ""}`}
+          onClick={(): void => handleTabChange("details")}
+        >
+          {s.tabJobDetails}
+        </button>
+        <button
+          role="tab"
+          aria-selected={activeTab === "cover-letter"}
+          className={`${detailStyles.tabBtn} ${activeTab === "cover-letter" ? detailStyles.tabBtnActive : ""}`}
+          onClick={(): void => handleTabChange("cover-letter")}
+        >
+          {s.tabCoverLetter}
+        </button>
       </div>
+
+      {activeTab === "details" && (
+        <div className={detailStyles.cardScroll}>
+          <JobCard
+            response={displayJob}
+            onRequestScore={handleRequestScore}
+            isScoringPending={isScoringPending}
+            onNavigateUpload={handleNavigateUpload}
+          />
+        </div>
+      )}
+
+      {activeTab === "cover-letter" && (
+        <div className={detailStyles.cardScroll}>
+          <CoverLetterTab jobId={job.id} resumeId={activeResume?.id ?? null} />
+        </div>
+      )}
     </main>
   );
 }

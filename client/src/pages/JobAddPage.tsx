@@ -161,9 +161,9 @@ export function JobAddPage(): React.JSX.Element {
       // Navigate directly back to the job detail page with a rescore trigger,
       // bypassing the Add Job intermediate step to avoid infinite loading.
       const returnTo = `/jobs/${partialJob.id}?rescore=1`;
-      navigate(`/resumes?returnTo=${encodeURIComponent(returnTo)}`);
+      navigate(`/documents?returnTo=${encodeURIComponent(returnTo)}`);
     } else {
-      navigate("/resumes?returnTo=/jobs/add");
+      navigate("/documents?returnTo=/jobs/add");
     }
   }
 
@@ -209,7 +209,7 @@ export function JobAddPage(): React.JSX.Element {
         {resumes.length === 0 ? (
           <button
             className={styles.uploadResumeTopBtn}
-            onClick={(): void => { void navigate("/resumes"); }}
+            onClick={(): void => { void navigate("/documents"); }}
             aria-label={s.noActiveResume.uploadToScoreButton}
           >
             {s.noActiveResume.uploadToScoreButton}

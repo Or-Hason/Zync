@@ -14,7 +14,7 @@ export function NoActiveResumePrompt(): React.JSX.Element {
       <span className={styles.icon}>⚠</span>
       <div className={styles.content}>
         <p className={styles.message}>{s.prompt}</p>
-        <Link to="/resumes" className={styles.link}>
+        <Link to="/documents" className={styles.link}>
           {s.linkText}
         </Link>
       </div>

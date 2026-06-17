@@ -55,11 +55,23 @@ class GeminiClient:
         """Whether an API key and at least one model are present."""
         return bool(self._api_key) and bool(self._models)
 
-    def _generate(self, prompt: str, model: str) -> str:
+    def _generate(
+        self,
+        prompt: str,
+        model: str,
+        system_instruction: str | None = SYSTEM_INSTRUCTION,
+    ) -> str:
         """Synchronously call Gemini with a specific model (run in a worker thread).
 
         Uses the supported ``google-genai`` SDK (the older ``google-generativeai``
         package is deprecated and no longer maintained).
+
+        Args:
+            prompt: The full user prompt to send.
+            model: The Gemini model ID to use.
+            system_instruction: Optional system instruction. Defaults to the
+                scoring instruction; pass ``None`` for tasks that embed all
+                context in the prompt (e.g. cover letter generation).
         """
         from google import genai
         from google.genai import types
@@ -69,14 +81,18 @@ class GeminiClient:
             model=model,
             contents=prompt,
             config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_INSTRUCTION,
+                system_instruction=system_instruction,
                 response_mime_type="application/json",
                 http_options=types.HttpOptions(timeout=int(self._timeout * 1000)),
             ),
         )
         return response.text or ""
 
-    def _generate_with_fallback(self, prompt: str) -> str:
+    def _generate_with_fallback(
+        self,
+        prompt: str,
+        system_instruction: str | None = SYSTEM_INSTRUCTION,
+    ) -> str:
         """Try each model with exponential back-off for transient errors.
 
         Error classification:
@@ -117,7 +133,7 @@ class GeminiClient:
                 _transient = False
                 _err_label = ""
                 try:
-                    return self._generate(prompt, model)
+                    return self._generate(prompt, model, system_instruction)
                 except ClientError as exc:
                     if exc.code != 429:
                         raise  # Permanent 4xx — propagate immediately.
@@ -164,6 +180,24 @@ class GeminiClient:
         raise GeminiUnavailableError(
             f"All {num_models} Gemini model(s) are unavailable. Retry later."
         )
+
+    async def generate(self, prompt: str) -> str:
+        """Run an arbitrary prompt through the Gemini model rotation.
+
+        Useful for tasks other than job scoring (e.g. cover letter generation)
+        where the caller builds the full prompt and expects a raw text response.
+        Uses the same retry and model-rotation logic as :meth:`score`.
+
+        Args:
+            prompt: The complete prompt to send to Gemini.
+
+        Returns:
+            The raw text response from Gemini.
+
+        Raises:
+            GeminiUnavailableError: When all configured models are exhausted.
+        """
+        return await asyncio.to_thread(self._generate_with_fallback, prompt, None)
 
     async def score(
         self,

@@ -1,4 +1,4 @@
-"""Pydantic schemas for the settings (blacklist + bypass preference) API."""
+"""Pydantic schemas for the settings API: blacklist, bypass preference, scan, and letter template."""
 
 from __future__ import annotations
 
@@ -35,6 +35,21 @@ class BypassPreferenceModel(BaseModel):
 # Allowed scan cadences in hours. Mirrors ``SCAN_FREQUENCY_CHOICES`` in
 # ``app.models.settings``; using a Literal yields a clean HTTP 422 on bad input.
 ScanFrequencyHours = Literal[1, 3, 6, 12, 24]
+
+
+class LetterTemplateResponse(BaseModel):
+    """Current letter template stored in the settings JSONB blob."""
+
+    text: str | None = None
+    filename: str | None = None
+
+
+class LetterTemplateTextUpdate(BaseModel):
+    """Payload for PATCH /settings/letter-template — inline text-only save."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    text: str
 
 
 class ScanSettings(BaseModel):
