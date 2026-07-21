@@ -185,6 +185,7 @@ async def list_jobs(
     source_type: str | None = None,
     is_new: bool = False,
     is_unread: bool = False,
+    has_cover_letter: bool = False,
     skills: list[str] | None = None,
     min_experience: int | None = None,
     status: str | None = None,
@@ -203,6 +204,7 @@ async def list_jobs(
         source_type: ``"manual"`` or ``"auto"`` (any non-manual source_type).
         is_new: When True, only jobs created in the last 24 hours.
         is_unread: When True, only jobs where viewed_at IS NULL (user has not viewed the detail).
+        has_cover_letter: When True, only jobs with at least one generated cover letter.
         skills: Each skill must appear in requirements->skills OR ->recommended_skills.
         min_experience: Lower bound on requirements->years_of_experience.
         status: Exact job status match.
@@ -264,6 +266,14 @@ async def list_jobs(
 
     if is_unread:
         stmt = stmt.where(Job.viewed_at.is_(None))
+
+    if has_cover_letter:
+        from app.models.cover_letter import CoverLetter
+        stmt = stmt.where(
+            select(func.count()).select_from(CoverLetter).where(
+                CoverLetter.job_id == Job.id
+            ).correlate(Job).scalar_subquery() > 0
+        )
 
     if skills:
         for skill in skills:

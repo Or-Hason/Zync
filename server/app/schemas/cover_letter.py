@@ -30,3 +30,11 @@ class CoverLetterGenerate(BaseModel):
     """
 
     pass
+
+
+class CoverLetterUpdate(BaseModel):
+    """Payload for PATCH cover-letter — updates the edited generated text."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    generated_text: str

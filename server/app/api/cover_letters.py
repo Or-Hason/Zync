@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db
 from app.models.cover_letter import CoverLetter
 from app.models.job import Job
-from app.schemas.cover_letter import CoverLetterRead
+from app.models.resume import Resume
+from app.schemas.cover_letter import CoverLetterRead, CoverLetterUpdate
 from app.services.cover_letter_service import generate_cover_letter
 from app.services.gemini_client import GeminiUnavailableError, get_gemini_client
 from app.services.settings_store import SettingsStore, get_settings_store
@@ -40,6 +41,26 @@ async def _load_job(job_id: UUID, db: AsyncSession) -> Job:
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     return job
+
+
+async def _load_resume(resume_id: UUID, db: AsyncSession) -> Resume:
+    """Return the Resume row or raise HTTP 404.
+
+    Args:
+        resume_id: UUID of the resume to load.
+        db: Active async DB session.
+
+    Returns:
+        The :class:`Resume` ORM instance.
+
+    Raises:
+        HTTPException: 404 when the resume does not exist.
+    """
+    result = await db.execute(select(Resume).where(Resume.id == resume_id))
+    resume = result.scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Resume not found.")
+    return resume
 
 
 @router.get(
@@ -90,10 +111,11 @@ async def create_cover_letter(
     if a letter already exists for this ``(job_id, resume_id)`` pair.
 
     Raises:
-        HTTPException: 404 job not found; 400 no template; 409 already exists;
+        HTTPException: 404 job/resume not found; 400 no template; 409 already exists;
             503 Gemini unavailable.
     """
     job = await _load_job(job_id, db)
+    resume = await _load_resume(resume_id, db)
 
     template = await store.get_letter_template()
     template_text: str | None = template.get("text")
@@ -109,6 +131,7 @@ async def create_cover_letter(
         generated_text, summary = await generate_cover_letter(
             template_text=template_text,
             job=job,
+            resume=resume,
             gemini=gemini,
         )
     except GeminiUnavailableError as exc:
@@ -147,4 +170,39 @@ async def create_cover_letter(
         "Cover letter generated",
         extra={"job_id": str(job_id), "resume_id": str(resume_id)},
     )
+    return CoverLetterRead.model_validate(letter)
+
+
+@router.patch(
+    "",
+    response_model=CoverLetterRead,
+    summary="Update the generated text of an existing cover letter",
+)
+async def update_cover_letter(
+    job_id: UUID,
+    resume_id: UUID,
+    payload: CoverLetterUpdate,
+    db: AsyncSession = Depends(get_db),
+) -> CoverLetterRead:
+    """Persist user edits to the generated cover letter text.
+
+    Raises:
+        HTTPException: 404 when no letter exists for this job+resume pair.
+    """
+    result = await db.execute(
+        select(CoverLetter).where(
+            CoverLetter.job_id == job_id,
+            CoverLetter.resume_id == resume_id,
+        )
+    )
+    letter = result.scalar_one_or_none()
+    if letter is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No cover letter found for this job and resume combination.",
+        )
+    letter.generated_text = payload.generated_text
+    await db.commit()
+    await db.refresh(letter)
+    logger.info("Cover letter updated", extra={"job_id": str(job_id), "resume_id": str(resume_id)})
     return CoverLetterRead.model_validate(letter)

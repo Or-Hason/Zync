@@ -74,6 +74,7 @@ export function LetterTemplateSection(): React.JSX.Element {
   }
 
   function handleDelete(): void {
+    if (!window.confirm(s.deleteConfirm)) return;
     deleteTemplate(undefined, {
       onSuccess: () => { setEditorText(""); setIsDirty(false); flashStatus(s.deleteSuccess, false); },
       onError: () => flashStatus(s.deleteError, true),

@@ -16,6 +16,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, Response
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api._job_pipeline_helpers import (
@@ -176,6 +177,7 @@ async def list_jobs_endpoint(
     source_type: str | None = Query(None, description="manual or auto"),
     is_new: bool = Query(False, description="Only jobs created in the last 24 hours"),
     is_unread: bool = Query(False, description="Only jobs where viewed_at IS NULL (user has not viewed the detail)"),
+    has_cover_letter: bool = Query(False, description="Only jobs with generated cover letters"),
     skills: list[str] = Query(default_factory=list, description="Required skills (multi)"),
     min_experience: int | None = Query(None, ge=0, description="Minimum years of experience"),
     job_status: str | None = Query(None, alias="status", description="Exact status match"),
@@ -207,6 +209,7 @@ async def list_jobs_endpoint(
         source_type=source_type,
         is_new=is_new,
         is_unread=is_unread,
+        has_cover_letter=has_cover_letter,
         skills=skills or [],
         min_experience=min_experience,
         status=job_status,
@@ -215,6 +218,14 @@ async def list_jobs_endpoint(
     # Aggregate all resume IDs from child rescore rows.
     parent_ids = [j.id for j in rows]
     child_cv_map = await get_child_resume_ids(db, parent_ids)
+
+    # Query which jobs have cover letters.
+    from app.models.cover_letter import CoverLetter
+    cover_letter_jobs = set(
+        (await db.execute(
+            select(CoverLetter.job_id).where(CoverLetter.job_id.in_(parent_ids)).distinct()
+        )).scalars().all()
+    )
 
     items: list[JobListItem] = []
     for j in rows:
@@ -226,7 +237,10 @@ async def list_jobs_endpoint(
             )
         )
         item = JobListItem.model_validate(j).model_copy(
-            update={"scored_resume_ids": all_cv_ids}
+            update={
+                "scored_resume_ids": all_cv_ids,
+                "has_cover_letter": j.id in cover_letter_jobs,
+            }
         )
         items.append(item)
 

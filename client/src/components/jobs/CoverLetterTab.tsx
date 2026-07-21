@@ -1,15 +1,24 @@
-import { useRef } from "react";
+import { useState } from "react";
 import { en } from "@/i18n/en";
 import {
   useCoverLetter,
   useGenerateCoverLetter,
   useLetterTemplate,
   useSaveLetterTemplate,
+  useUpdateCoverLetter,
 } from "@/api/coverLetterApi";
+import { UploadZone } from "@/components/resume/UploadZone";
 import { CoverLetterDiffEditor } from "./CoverLetterDiffEditor";
 import styles from "./CoverLetterTab.module.css";
 
 const s = en.pages.coverLetter;
+
+const LETTER_ACCEPTED_TYPES = [
+  "text/plain",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+const LETTER_ACCEPTED_EXTENSIONS = [".txt", ".docx"];
+const LETTER_MAX_BYTES = 5 * 1024 * 1024;
 
 interface CoverLetterTabProps {
   jobId: string;
@@ -19,7 +28,7 @@ interface CoverLetterTabProps {
 
 /**
  * Three-state cover letter tab inside Job Details:
- *  1. No template → upload prompt
+ *  1. No template → drag-and-drop upload zone
  *  2. Template exists, no letter → generate prompt + privacy notice
  *  3. Letter exists → diff viewer
  */
@@ -29,24 +38,16 @@ export function CoverLetterTab({ jobId, resumeId }: CoverLetterTabProps): React.
     jobId,
     resumeId ?? undefined,
   );
-  const { mutate: saveFile, isPending: isSavingFile } = useSaveLetterTemplate();
+  const { mutate: saveFile, isPending: isSavingFile, error: uploadError, reset: resetUpload } =
+    useSaveLetterTemplate();
   const { mutate: generate, isPending: isGenerating, error: generateError } =
     useGenerateCoverLetter();
+  const { mutate: updateLetter, isPending: isSavingLetter } = useUpdateCoverLetter();
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadErrorDismissed, setUploadErrorDismissed] = useState(false);
 
-  const LETTER_ACCEPTED_TYPES = [
-    "text/plain",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ];
-  const LETTER_MAX_BYTES = 5 * 1024 * 1024;
-
-  function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>): void {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (!LETTER_ACCEPTED_TYPES.includes(file.type)) return;
-    if (file.size > LETTER_MAX_BYTES) return;
+  function handleFileUpload(file: File): void {
+    setUploadErrorDismissed(false);
     saveFile(file);
   }
 
@@ -82,33 +83,47 @@ export function CoverLetterTab({ jobId, resumeId }: CoverLetterTabProps): React.
           originalText={coverLetter.original_template_text ?? ""}
           generatedText={coverLetter.generated_text}
           summary={coverLetter.gemini_summary}
+          onSave={(text): void => updateLetter({ jobId, resumeId: resumeId!, generatedText: text })}
+          isSaving={isSavingLetter}
         />
       </div>
     );
   }
 
-  // State 1: no template uploaded
+  // State 1: no template uploaded — full drag-and-drop zone
   if (!hasTemplate) {
+    const showUploadError = Boolean(uploadError) && !uploadErrorDismissed;
     return (
-      <div className={styles.centeredState}>
+      <div className={styles.uploadState}>
         <p className={styles.stateHeading}>{s.noTemplate.heading}</p>
         <p className={styles.stateDescription}>{s.noTemplate.description}</p>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".txt,.docx"
-          className={styles.hiddenInput}
-          onChange={handleFileSelect}
-          aria-label={s.noTemplate.uploadButton}
-        />
-        <button
-          className={styles.primaryBtn}
-          onClick={(): void => fileInputRef.current?.click()}
-          disabled={isSavingFile}
-          aria-label={s.noTemplate.uploadButton}
-        >
-          {isSavingFile ? s.noTemplate.uploadingButton : s.noTemplate.uploadButton}
-        </button>
+        {isSavingFile ? (
+          <p className={styles.stateDescription} aria-live="polite">
+            {s.noTemplate.uploadingButton}
+          </p>
+        ) : (
+          <UploadZone
+            onFile={handleFileUpload}
+            acceptedTypes={LETTER_ACCEPTED_TYPES}
+            acceptedExtensions={LETTER_ACCEPTED_EXTENSIONS}
+            maxBytes={LETTER_MAX_BYTES}
+            dropText={s.noTemplate.uploadButton}
+            orText={en.pages.documentsManager.letterTemplate.uploadOr}
+            browseText={en.pages.documentsManager.letterTemplate.uploadBrowse}
+            hint={en.pages.documentsManager.letterTemplate.uploadHint}
+            invalidTypeText={s.noTemplate.uploadInvalidType}
+            tooLargeText={s.noTemplate.uploadTooLarge}
+          />
+        )}
+        {showUploadError && (
+          <p
+            className={styles.errorMsg}
+            role="alert"
+            onClick={(): void => { setUploadErrorDismissed(true); resetUpload(); }}
+          >
+            {s.noTemplate.uploadError}
+          </p>
+        )}
       </div>
     );
   }

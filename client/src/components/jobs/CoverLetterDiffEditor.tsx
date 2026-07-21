@@ -9,21 +9,27 @@ interface CoverLetterDiffEditorProps {
   originalText: string;
   generatedText: string;
   summary: string | null;
+  onSave?: (text: string) => void;
+  isSaving?: boolean;
 }
 
 /**
  * GitHub-style diff viewer for the generated cover letter.
  * Shows original template vs. AI generated text side-by-side.
- * Includes a Gemini summary bubble and copy/download actions.
+ * Includes a Gemini summary bubble, copy, print, and optional save actions.
  */
 export function CoverLetterDiffEditor({
   originalText,
   generatedText,
   summary,
+  onSave,
+  isSaving = false,
 }: CoverLetterDiffEditorProps): React.JSX.Element {
   const [mode, setMode] = useState<"diff" | "edit">("diff");
   const [editedText, setEditedText] = useState(generatedText);
   const [copyLabel, setCopyLabel] = useState<string>(s.copyButton);
+
+  const isDirty = editedText !== generatedText;
 
   function handleCopy(): void {
     const textToCopy = mode === "edit" ? editedText : generatedText;
@@ -33,27 +39,18 @@ export function CoverLetterDiffEditor({
     });
   }
 
-  function handleDownloadPdf(): void {
-    const textContent = mode === "edit" ? editedText : generatedText;
-    const escaped = textContent
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-    const html =
-      `<!DOCTYPE html><html><head><title>Cover Letter</title><style>` +
-      `body{font-family:serif;font-size:12pt;line-height:1.6;padding:40px;white-space:pre-wrap;}` +
-      `@media print{body{padding:0;}}</style></head><body>${escaped}</body></html>`;
-    const blob = new Blob([html], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
-    iframe.src = url;
-    document.body.appendChild(iframe);
-    iframe.addEventListener("load", () => {
-      iframe.contentWindow?.print();
-      document.body.removeChild(iframe);
-      URL.revokeObjectURL(url);
-    });
+  function handlePrint(): void {
+    const text = mode === "edit" ? editedText : generatedText;
+    const printDiv = document.createElement("div");
+    printDiv.id = "cover-letter-print";
+    printDiv.textContent = text;
+    document.body.appendChild(printDiv);
+    const cleanup = (): void => {
+      if (document.body.contains(printDiv)) document.body.removeChild(printDiv);
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    window.print();
   }
 
   return (
@@ -84,11 +81,21 @@ export function CoverLetterDiffEditor({
         </div>
 
         <div className={styles.actions}>
+          {mode === "edit" && onSave && isDirty && (
+            <button
+              className={`${styles.actionBtn} ${styles.actionBtnPrimary}`}
+              onClick={(): void => onSave(editedText)}
+              disabled={isSaving}
+              aria-label={s.saveButton}
+            >
+              {isSaving ? s.savingButton : s.saveButton}
+            </button>
+          )}
           <button className={styles.actionBtn} onClick={handleCopy} aria-label={s.copyButton}>
             {copyLabel}
           </button>
-          <button className={styles.actionBtn} onClick={handleDownloadPdf} aria-label={s.downloadButton}>
-            {s.downloadButton}
+          <button className={styles.actionBtn} onClick={handlePrint} aria-label={s.printButton}>
+            {s.printButton}
           </button>
         </div>
       </div>
@@ -101,7 +108,7 @@ export function CoverLetterDiffEditor({
             splitView
             leftTitle={s.originalLabel}
             rightTitle={s.generatedLabel}
-            useDarkTheme={false}
+            useDarkTheme
           />
         </div>
       )}

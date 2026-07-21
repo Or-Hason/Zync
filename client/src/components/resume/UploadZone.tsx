@@ -42,6 +42,7 @@ export function UploadZone({
   tooLargeText = en.pages.resumeManager.uploadTooLarge,
 }: UploadZoneProps): React.JSX.Element {
   const inputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -75,7 +76,8 @@ export function UploadZone({
   const handleFileRef = useRef(handleFile);
   useEffect(() => { handleFileRef.current = handleFile; });
 
-  // Tauri WebView2 suppresses browser drop events — use the native Tauri API instead.
+  // Tauri WebView2 suppresses browser drop events — use the native window API for the actual
+  // file-drop payload. Hover state is handled entirely by standard DOM drag events above.
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     let unlisten: (() => void) | undefined;
@@ -85,11 +87,24 @@ export function UploadZone({
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const { invoke } = await import("@tauri-apps/api/core");
 
+      const isOverThisZone = (pos: { x: number; y: number }): boolean => {
+        if (!dropZoneRef.current) return false;
+        const rect = dropZoneRef.current.getBoundingClientRect();
+        return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
+      };
+
       const unl = await getCurrentWindow().onDragDropEvent(async (event) => {
-        const p = event.payload as { type: string; paths?: string[] };
-        if (p.type === "hover") { setDragging(true); return; }
-        if (p.type === "leave" || p.type !== "drop") { setDragging(false); return; }
+        const p = event.payload as { type: string; paths?: string[]; position?: { x: number; y: number } };
+
+        if (p.type === "leave") { if (mounted) setDragging(false); return; }
+        if (p.type !== "drop") return;
+
+        if (!mounted) return;
         setDragging(false);
+
+        const pos = p.position as { x: number; y: number } | undefined;
+        if (!pos || !isOverThisZone(pos)) return;
+
         const path = (p.paths ?? [])[0];
         if (!path) return;
 
@@ -119,8 +134,10 @@ export function UploadZone({
 
   return (
     <div
+      ref={dropZoneRef}
       className={`${styles.zone} ${dragging ? styles.dragging : ""}`}
-      onDragOver={(e): void => { e.preventDefault(); setDragging(true); }}
+      onDragEnter={(e): void => { e.preventDefault(); setDragging(true); }}
+      onDragOver={(e): void => { e.preventDefault(); e.stopPropagation(); setDragging(true); }}
       onDragLeave={(): void => setDragging(false)}
       onDrop={onDrop}
       onClick={(): void => inputRef.current?.click()}

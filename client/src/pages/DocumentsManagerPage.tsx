@@ -149,7 +149,7 @@ export function DocumentsManagerPage(): React.JSX.Element {
       )}
 
       {showEditor && activeResume && (
-        <>
+        <div className={styles.resumeSection}>
           <div className={styles.toolbar}>
             <ResumeList
               resumes={resumeList}
@@ -201,7 +201,7 @@ export function DocumentsManagerPage(): React.JSX.Element {
             onSaveError={(): void => showToast(rm.saveError, "error")}
             onDirtyChange={setIsDirty}
           />
-        </>
+        </div>
       )}
 
       {showUpload && (

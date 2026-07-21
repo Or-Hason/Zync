@@ -64,6 +64,31 @@ export function useCoverLetter(
   });
 }
 
+/** Mutation hook: update the generated text of an existing cover letter (user edits). */
+export function useUpdateCoverLetter(): ReturnType<
+  typeof useMutation<CoverLetterRead, Error & { status?: number }, { jobId: string; resumeId: string; generatedText: string }>
+> {
+  const qc = useQueryClient();
+  return useMutation<
+    CoverLetterRead,
+    Error & { status?: number },
+    { jobId: string; resumeId: string; generatedText: string }
+  >({
+    mutationFn: ({ jobId, resumeId, generatedText }) =>
+      fetchJson<CoverLetterRead>(
+        `${BASE}/jobs/${jobId}/cover-letter?resume_id=${resumeId}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ generated_text: generatedText }),
+        },
+      ),
+    onSuccess: (data) => {
+      qc.setQueryData(["cover-letter", data.job_id, data.resume_id], data);
+    },
+  });
+}
+
 /** Mutation hook: generate a cover letter via POST. */
 export function useGenerateCoverLetter(): ReturnType<
   typeof useMutation<CoverLetterRead, Error & { status?: number }, { jobId: string; resumeId: string }>
@@ -102,21 +127,28 @@ export function useLetterTemplate(): ReturnType<typeof useQuery<LetterTemplate>>
 
 /** Mutation hook: upload and save a new letter template file. */
 export function useSaveLetterTemplate(): ReturnType<
-  typeof useMutation<LetterTemplate, Error & { status?: number }, File>
+  typeof useMutation<void, Error & { status?: number }, File>
 > {
   const qc = useQueryClient();
-  return useMutation<LetterTemplate, Error & { status?: number }, File>({
-    mutationFn: (file: File) => {
+  return useMutation<void, Error & { status?: number }, File>({
+    mutationFn: async (file: File) => {
       const form = new FormData();
       form.append("file", file);
-      return fetchJson<LetterTemplate>(`${BASE}/settings/letter-template`, {
+      const res = await fetch(`${BASE}/settings/letter-template`, {
         method: "PUT",
         body: form,
       });
+      if (!res.ok) {
+        const err = new Error(`HTTP ${res.status}`) as Error & { status: number };
+        err.status = res.status;
+        throw err;
+      }
     },
-    onSuccess: (data) => {
-      qc.setQueryData(["letter-template"], data);
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["letter-template"] });
     },
+    retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
   });
 }
 

@@ -89,6 +89,17 @@
   color: var(--color-accent);
 }
 
+.actionBtnPrimary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.actionBtnPrimary:hover {
+  opacity: 0.85;
+  color: #fff;
+}
+
 /* ── Diff viewer wrapper ─────────────────────────────────────────────────── */
 
 .diffWrapper {
