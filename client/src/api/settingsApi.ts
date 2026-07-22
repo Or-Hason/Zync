@@ -26,6 +26,17 @@ export interface ScanSettings {
   scan_in_progress: boolean;
 }
 
+export type NotificationMode = "A" | "B" | "C";
+
+export interface NotificationSettings {
+  notification_mode: NotificationMode;
+  daily_notify_time: string | null;
+  notify_if_zero: boolean;
+  dnd_start: string | null;
+  dnd_end: string | null;
+  immediate_job_threshold: number | null;
+}
+
 const BASE = "/api/settings";
 
 async function fetchBlacklist(): Promise<string[]> {
@@ -99,6 +110,7 @@ export const SETTINGS_KEYS = {
   blacklist: ["settings", "blacklist"] as const,
   bypassPreference: ["settings", "bypassPreference"] as const,
   scan: ["settings", "scan"] as const,
+  notifications: ["settings", "notifications"] as const,
 };
 
 /** Fetch the blacklist keyword list. */
@@ -212,6 +224,58 @@ export function useTriggerScan(): ReturnType<
     mutationFn: triggerScan,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SETTINGS_KEYS.scan });
+    },
+  });
+}
+
+// ── Notification Settings ─────────────────────────────────────────────────
+
+async function fetchNotificationSettings(): Promise<NotificationSettings> {
+  const res = await fetch(`${BASE}/notifications`);
+  if (!res.ok) throw new Error("Failed to fetch notification settings");
+  return res.json() as Promise<NotificationSettings>;
+}
+
+async function updateNotificationSettings(
+  payload: NotificationSettings,
+): Promise<NotificationSettings> {
+  const res = await fetch(`${BASE}/notifications`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let msg = "Failed to save notification settings";
+    if (res.status === 400) {
+      try {
+        const body = (await res.json()) as { detail?: string };
+        if (body.detail) msg = body.detail;
+      } catch {
+        // use default error message
+      }
+    }
+    throw Object.assign(new Error(msg), { status: res.status });
+  }
+  return res.json() as Promise<NotificationSettings>;
+}
+
+/** Fetch current notification settings. */
+export function useNotificationSettings(): ReturnType<typeof useQuery<NotificationSettings>> {
+  return useQuery<NotificationSettings>({
+    queryKey: SETTINGS_KEYS.notifications,
+    queryFn: fetchNotificationSettings,
+  });
+}
+
+/** Persist notification settings. */
+export function useUpdateNotificationSettings(): ReturnType<
+  typeof useMutation<NotificationSettings, Error & { status?: number }, NotificationSettings>
+> {
+  const qc = useQueryClient();
+  return useMutation<NotificationSettings, Error & { status?: number }, NotificationSettings>({
+    mutationFn: updateNotificationSettings,
+    onSuccess: (settings) => {
+      qc.setQueryData(SETTINGS_KEYS.notifications, settings);
     },
   });
 }

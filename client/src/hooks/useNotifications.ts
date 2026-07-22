@@ -13,6 +13,8 @@ interface JobMatchPayload {
   job_id: string;
   job_title: string;
   match_score: number;
+  job_count: number;
+  silent: boolean;
 }
 
 const SSE_URL = "/api/notifications/stream";
@@ -28,7 +30,8 @@ export function useNotifications(): void {
     es.addEventListener("job_match", (e: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(e.data) as JobMatchPayload;
-        void fireNotification(payload.job_title, payload.match_score);
+        if (payload.silent) return; // Discard silently (DND mode)
+        void fireNotification(payload.job_title, payload.match_score, payload.job_count);
       } catch {
         // Malformed event payload — silently skip.
       }

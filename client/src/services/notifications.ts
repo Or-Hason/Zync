@@ -76,13 +76,18 @@ async function fireWebNotification(title: string, body: string): Promise<void> {
  *
  * @param jobTitle - Job title shown in the notification body.
  * @param matchScore - Match score (0–100).
+ * @param jobCount - Number of jobs found in this batch.
  */
 export async function fireNotification(
   jobTitle: string,
   matchScore: number,
+  jobCount: number = 1,
 ): Promise<void> {
-  const title = s.title;
-  const body = s.body.replace("{jobTitle}", jobTitle).replace("{score}", String(matchScore));
+  const isMultiple = jobCount > 1;
+  const title = isMultiple ? s.titleMultiple : s.title;
+  const body = isMultiple
+    ? s.bodyMultiple.replace("{count}", String(jobCount))
+    : s.body.replace("{jobTitle}", jobTitle).replace("{score}", String(matchScore));
 
   if ("__TAURI__" in window) {
     await fireTauriNotification(title, body);
