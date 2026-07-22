@@ -218,8 +218,6 @@ async def _process_link(
         and outcome.job.match_score >= notification_threshold
     ):
         notifiable_job = outcome.job
-        outcome.job.notified_at = datetime.now(timezone.utc)
-        await db.flush()
 
     return outcome.kind, notifiable_job
 
@@ -318,14 +316,33 @@ async def run_scan(
 
     # Emit one SSE event per qualifying job now that the full batch count is known.
     job_count = len(notifiable_jobs)
-    for job in notifiable_jobs:
-        await notification_bus.emit_job_match(
-            job_id=str(job.id),
-            job_title=job.job_title or "",
-            match_score=job.match_score,
-            job_count=job_count,
-            silent=dnd_silent,
-        )
+    if job_count > 0:
+        mode = notif_cfg.get("notification_mode", "A")
+        should_emit = True
+        
+        if mode == "B":
+            should_emit = False
+        elif mode == "C":
+            new_total = await store.increment_immediate_jobs_counter(job_count)
+            threshold = int(notif_cfg.get("immediate_job_threshold", 5))
+            if new_total >= threshold:
+                job_count = new_total  # The frontend will see the total accumulated jobs
+                await store.reset_immediate_jobs_counter()
+            else:
+                should_emit = False
+                
+        if should_emit:
+            now_utc = datetime.now(timezone.utc)
+            for job in notifiable_jobs:
+                await notification_bus.emit_job_match(
+                    job_id=str(job.id),
+                    job_title=job.job_title or "",
+                    match_score=job.match_score,
+                    job_count=job_count,
+                    silent=dnd_silent,
+                )
+                job.notified_at = now_utc
+            await db.flush()
 
     logger.info(
         "Scan complete",

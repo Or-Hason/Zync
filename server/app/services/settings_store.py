@@ -326,6 +326,28 @@ class SettingsStore:
         data["next_scheduled_scan_at"] = iso_timestamp
         await self._save(data)
 
+    async def increment_immediate_jobs_counter(self, count: int) -> int:
+        """Add to the Mode C counter and return the new total.
+
+        Args:
+            count: Number of qualifying jobs to add.
+
+        Returns:
+            The new counter value.
+        """
+        data = await self._load()
+        current = int(data.get("immediate_jobs_found_since_reset", 0))
+        new_total = current + count
+        data["immediate_jobs_found_since_reset"] = new_total
+        await self._save(data)
+        return new_total
+
+    async def reset_immediate_jobs_counter(self) -> None:
+        """Reset the Mode C counter to zero."""
+        data = await self._load()
+        data["immediate_jobs_found_since_reset"] = 0
+        await self._save(data)
+
     # ── Letter template ───────────────────────────────────────────────────────
 
     async def get_letter_template(self) -> dict:
