@@ -1,0 +1,19 @@
+sources:
+  zync-db:
+    kind: postgres
+    host: 127.0.0.1
+    port: 5432
+    database: zync_db
+    user: zync_user
+    password: zync_password
+
+tools:
+  query_zync:
+    kind: postgres-sql
+    source: zync-db
+    description: "Execute a SQL query on the Zync database"
+    parameters:
+      - name: query
+        type: string
+        description: "The SQL query to execute"
+    statement: $1

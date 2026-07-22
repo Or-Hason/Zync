@@ -18,6 +18,16 @@ DEFAULT_NOTIFICATION_SCORE_THRESHOLD = 80
 # Allowed values for scan_frequency_hours (mirrored by the API schema).
 SCAN_FREQUENCY_CHOICES = (1, 3, 6, 12, 24)
 
+# Notification-mode defaults.
+DEFAULT_NOTIFICATION_MODE = "A"
+DEFAULT_DAILY_NOTIFY_TIME = None
+DEFAULT_NOTIFY_IF_ZERO = False
+DEFAULT_DND_START = None
+DEFAULT_DND_END = None
+DEFAULT_IMMEDIATE_JOB_THRESHOLD = None
+DEFAULT_NEXT_SCHEDULED_SCAN_AT = None
+DEFAULT_IMMEDIATE_JOBS_FOUND_SINCE_RESET = 0
+
 # Default JSONB payload created on first access.
 DEFAULT_SETTINGS_DATA: dict = {
     "blacklist": [],
@@ -27,6 +37,15 @@ DEFAULT_SETTINGS_DATA: dict = {
     "notification_score_threshold": DEFAULT_NOTIFICATION_SCORE_THRESHOLD,
     # Internal scheduler bookkeeping (ISO-8601 string or null); not user-facing.
     "last_scan_at": None,
+    # Notification settings.
+    "notification_mode": DEFAULT_NOTIFICATION_MODE,
+    "daily_notify_time": DEFAULT_DAILY_NOTIFY_TIME,
+    "notify_if_zero": DEFAULT_NOTIFY_IF_ZERO,
+    "dnd_start": DEFAULT_DND_START,
+    "dnd_end": DEFAULT_DND_END,
+    "immediate_job_threshold": DEFAULT_IMMEDIATE_JOB_THRESHOLD,
+    "next_scheduled_scan_at": DEFAULT_NEXT_SCHEDULED_SCAN_AT,
+    "immediate_jobs_found_since_reset": DEFAULT_IMMEDIATE_JOBS_FOUND_SINCE_RESET,
 }
 
 
