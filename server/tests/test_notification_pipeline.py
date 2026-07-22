@@ -35,6 +35,8 @@ class TestNotificationBus:
             parsed = json.loads(msg.split("data: ", 1)[1])
             assert parsed["job_id"] == "job-abc"
             assert parsed["match_score"] == 88
+            assert parsed["job_count"] == 1
+            assert parsed["silent"] is False
         finally:
             notification_bus.remove_client(q)
 
@@ -162,8 +164,15 @@ class TestRunScanNotificationHook:
         job = _make_job(match_score=85)
         emits: list[dict] = []
 
-        async def _fake_emit(job_id: str, job_title: str, match_score: int) -> None:
-            emits.append({"job_id": job_id, "match_score": match_score})
+        async def _fake_emit(
+            job_id: str,
+            job_title: str,
+            match_score: int,
+            job_count: int = 1,
+            *,
+            silent: bool = False,
+        ) -> None:
+            emits.append({"job_id": job_id, "match_score": match_score, "job_count": job_count})
 
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
@@ -184,6 +193,7 @@ class TestRunScanNotificationHook:
 
         assert len(emits) == 1
         assert emits[0]["match_score"] == 85
+        assert emits[0]["job_count"] == 1
         assert job.notified_at is not None
         assert session.flushed >= 1
 

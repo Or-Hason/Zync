@@ -156,7 +156,7 @@ async def _process_link(
     search_term: str,
     is_first_run: bool,
     notification_threshold: int | None = None,
-) -> str | None:
+) -> tuple[str | None, object | None]:
     """Fetch one job page and run it through the scoring pipeline.
 
     Args:
@@ -172,14 +172,16 @@ async def _process_link(
             ``None`` disables notification (safe default for tests / manual runs).
 
     Returns:
-        The pipeline outcome kind, or ``None`` when the page could not be
-        fetched/extracted (job skipped).
+        A ``(kind, notifiable_job)`` tuple. ``kind`` is the pipeline outcome
+        string (or ``None`` when the page could not be fetched/extracted).
+        ``notifiable_job`` is the job ORM object when it qualifies for a
+        notification, otherwise ``None``.
     """
     try:
         content = extract_content(await fetch_html(url))
     except (JobFetchError, ContentTooLargeError) as exc:
         logger.warning("Skipping job — fetch/extract failed", extra={"error": str(exc)})
-        return None
+        return None, None
 
     search_filters = {
         "source": SCRAPER_SOURCE,
@@ -204,8 +206,9 @@ async def _process_link(
             extra={"job_id": str(outcome.job.id), "source_type": SCRAPER_SOURCE},
         )
 
-    # Notification hook — only when a fresh or cache-hit score meets the threshold.
-    # ``notified_at is None`` prevents re-emission if the same row passes through again.
+    # Mark jobs that qualify for notification; the actual emit happens in
+    # run_scan after all links are processed so the full batch job_count is known.
+    notifiable_job = None
     if (
         notification_threshold is not None
         and outcome.kind in (KIND_SCORED, KIND_CACHE_HIT)
@@ -214,15 +217,11 @@ async def _process_link(
         and outcome.job.notified_at is None
         and outcome.job.match_score >= notification_threshold
     ):
-        await notification_bus.emit_job_match(
-            job_id=str(outcome.job.id),
-            job_title=outcome.job.job_title or "",
-            match_score=outcome.job.match_score,
-        )
+        notifiable_job = outcome.job
         outcome.job.notified_at = datetime.now(timezone.utc)
         await db.flush()
 
-    return outcome.kind
+    return outcome.kind, notifiable_job
 
 
 async def run_scan(
@@ -286,9 +285,17 @@ async def run_scan(
         max_per_scan=max_per_scan,
     )
 
+    # Fetch DND settings once before the loop so every qualifying job uses
+    # the same snapshot of the DND window for this scan batch.
+    notif_cfg = await store.get_notification_settings() if hasattr(store, "get_notification_settings") else {}
+    dnd_silent = notification_bus.is_dnd_active(
+        notif_cfg.get("dnd_start"), notif_cfg.get("dnd_end")
+    )
+
     processed = 0
+    notifiable_jobs: list = []
     for url in to_process:
-        kind = await _process_link(
+        kind, notifiable_job = await _process_link(
             url,
             db=db,
             ollama=ollama,
@@ -305,7 +312,20 @@ async def run_scan(
             break
         if kind is not None:
             processed += 1
+        if notifiable_job is not None:
+            notifiable_jobs.append(notifiable_job)
         await asyncio.sleep(1.5)  # pace requests to avoid burst 429s
+
+    # Emit one SSE event per qualifying job now that the full batch count is known.
+    job_count = len(notifiable_jobs)
+    for job in notifiable_jobs:
+        await notification_bus.emit_job_match(
+            job_id=str(job.id),
+            job_title=job.job_title or "",
+            match_score=job.match_score,
+            job_count=job_count,
+            silent=dnd_silent,
+        )
 
     logger.info(
         "Scan complete",

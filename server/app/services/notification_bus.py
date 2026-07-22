@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,38 @@ def remove_client(q: asyncio.Queue[str | None]) -> None:
         pass  # already removed — idempotent
 
 
-async def emit_job_match(job_id: str, job_title: str, match_score: int) -> None:
+def is_dnd_active(dnd_start: str | None, dnd_end: str | None) -> bool:
+    """Return whether the current UTC time falls inside the DND window.
+
+    Handles windows that span midnight (e.g. 23:00→07:00).  If either
+    boundary is ``None`` the window is considered inactive.
+
+    Args:
+        dnd_start: DND window start in ``HH:MM`` format, or ``None``.
+        dnd_end: DND window end in ``HH:MM`` format, or ``None``.
+
+    Returns:
+        ``True`` when the current UTC time is within the DND window.
+    """
+    if not dnd_start or not dnd_end:
+        return False
+    now_t = int(datetime.now(timezone.utc).strftime("%H%M"))
+    s = int(dnd_start.replace(":", ""))
+    e = int(dnd_end.replace(":", ""))
+    if s <= e:
+        return s <= now_t < e
+    # Midnight-spanning window (e.g. 23:00→07:00).
+    return now_t >= s or now_t < e
+
+
+async def emit_job_match(
+    job_id: str,
+    job_title: str,
+    match_score: int,
+    job_count: int = 1,
+    *,
+    silent: bool = False,
+) -> None:
     """Push a ``job_match`` SSE event to every connected client.
 
     No-op when no clients are connected (event is silently dropped).
@@ -61,18 +93,36 @@ async def emit_job_match(job_id: str, job_title: str, match_score: int) -> None:
         job_id: UUID string of the matched job.
         job_title: Title shown in the notification body.
         match_score: Computed match score (0–100).
+        job_count: Total number of matching jobs found in this scan batch.
+            Used by the frontend to decide between a detail-view link
+            (exactly 1 job) and the general Explorer view.
+        silent: When ``True``, instructs the frontend to create a native
+            Windows notification that goes directly to the Action Center
+            without popping up or making a sound (DND mode).
     """
     if not _clients:
         return
     payload = json.dumps(
-        {"job_id": job_id, "job_title": job_title, "match_score": match_score}
+        {
+            "job_id": job_id,
+            "job_title": job_title,
+            "match_score": match_score,
+            "job_count": job_count,
+            "silent": silent,
+        }
     )
     data = f"event: job_match\ndata: {payload}\n\n"
     for q in list(_clients):
         await q.put(data)
     logger.info(
         "Emitted job_match notification",
-        extra={"job_id": job_id, "match_score": match_score, "clients": len(_clients)},
+        extra={
+            "job_id": job_id,
+            "match_score": match_score,
+            "job_count": job_count,
+            "silent": silent,
+            "clients": len(_clients),
+        },
     )
 
 
