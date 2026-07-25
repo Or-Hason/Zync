@@ -18,6 +18,12 @@ export const notifications = {
   /** Template — substitute {jobTitle} and {score} at call site. */
   body: "{jobTitle} — Score: {score}",
   bodyMultiple: "Found {count} new jobs matching your profile.",
+  /** In-app toast shown on the Explorer page (persistent until dismissed). */
+  toastExplorer: "New match: {jobTitle} (Score: {score})",
+  toastExplorerMultiple: "{count} new matches found!",
+  /** In-app toast shown on non-Explorer pages with navigation action. */
+  viewMatches: "View matches",
+  viewJob: "View job",
   ctaBanner: "Enable notifications to get background alerts.",
   enableBtn: "Enable",
   dontAskAgain: "Don't ask me again",
