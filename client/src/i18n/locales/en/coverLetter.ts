@@ -1,0 +1,40 @@
+export const coverLetter = {
+  noTemplate: {
+    heading: "No Letter Template",
+    description: "Upload a personal letter template to generate a cover letter for this job.",
+    uploadButton: "Upload Template",
+    uploadingButton: "Uploading…",
+    uploadInvalidType: "Only TXT and DOCX files are accepted.",
+    uploadTooLarge: "File exceeds the 5 MB limit.",
+    uploadError: "Upload failed. Please try again.",
+  },
+  noLetter: {
+    heading: "Ready to Generate",
+    description: "Your letter template is ready. Click below to generate a tailored cover letter for this job.",
+    generateButton: "Generate Cover Letter",
+    generatingButton: "Generating…",
+    privacyNotice:
+      "Basic PII (Email, Phone, Full Name) is masked locally before processing on exact match only. For full privacy, use placeholders like [My Phone] in your template.",
+  },
+  noResume: {
+    heading: "No Active Resume",
+    description: "Select or upload a resume to generate a cover letter.",
+  },
+  existsConflict: "A cover letter already exists for this job and resume combination.",
+  generateError: "Failed to generate cover letter. Please try again.",
+  diffEditor: {
+    originalLabel: "Your Template",
+    generatedLabel: "AI Generated",
+    summaryLabel: "AI Summary",
+    copyButton: "Copy to Clipboard",
+    copySuccess: "Copied!",
+    printButton: "Print / Save as PDF",
+    saveButton: "Save Changes",
+    savingButton: "Saving…",
+    saveSuccess: "Changes saved.",
+    saveError: "Failed to save changes.",
+    editToggle: "Edit",
+    viewToggle: "View Diff",
+    editPlaceholder: "Edit the generated cover letter…",
+  },
+} as const;
