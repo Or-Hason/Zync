@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { en } from "@/i18n/en";
 import {
   useNotificationSettings,
@@ -11,6 +11,7 @@ import {
   setInAppSoundEnabled,
 } from "@/services/notifications";
 import { Toast } from "@/components/resume/Toast";
+import { DndFields } from "./DndFields";
 import styles from "./NotificationSettingsPanel.module.css";
 
 const s = en.pages.settings.notificationsPanel;
@@ -23,94 +24,6 @@ const DEFAULT_THRESHOLD = 5;
 const MAX_THRESHOLD = 20;
 
 type ToastState = { message: string; kind: "success" | "error" } | null;
-
-/**
- * Convert an "HH:MM" string to total minutes from midnight (0-1439).
- *
- * @param timeStr - Time string in "HH:MM" format.
- * @returns Total minutes from midnight, or NaN if invalid.
- */
-function timeToMinutes(timeStr: string): number {
-  const parts = timeStr.split(":");
-  if (parts.length !== 2) return NaN;
-  const h = parseInt(parts[0], 10);
-  const m = parseInt(parts[1], 10);
-  return h * 60 + m;
-}
-
-/**
- * Convert total minutes from midnight back to an "HH:MM" formatted string.
- *
- * @param totalMinutes - Total minutes (can be negative or above 1440, will wrap).
- * @returns Formatted "HH:MM" time string.
- */
-function minutesToTime(totalMinutes: number): string {
-  const m = ((totalMinutes % 1440) + 1440) % 1440;
-  const h = Math.floor(m / 60);
-  const mins = m % 60;
-  return `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-}
-
-/**
- * Check if a specific target time falls inside a DND interval [start, end).
- * Handles both same-day intervals and intervals that wrap around midnight.
- *
- * @param targetMin - Target time in minutes from midnight.
- * @param startMin - DND window start in minutes from midnight.
- * @param endMin - DND window end in minutes from midnight.
- * @returns True if target is within the DND window.
- */
-function isTimeInWindow(targetMin: number, startMin: number, endMin: number): boolean {
-  if (Number.isNaN(targetMin) || Number.isNaN(startMin) || Number.isNaN(endMin)) return false;
-  if (startMin <= endMin) {
-    return startMin <= targetMin && targetMin < endMin;
-  }
-  return targetMin >= startMin || targetMin < endMin;
-}
-
-/**
- * Calculate the automatic DND End time given a Start time and the Daily Digest time.
- * Defaults to start + 8 hours, but if the window collides with Daily Digest time,
- * caps the end time to 30 minutes before Daily Digest time.
- *
- * @param startStr - The "HH:MM" start time.
- * @param dailyNotifyStr - The "HH:MM" daily digest time.
- * @returns The collision-safe "HH:MM" end time.
- */
-function calculateAutoDndEnd(startStr: string, dailyNotifyStr: string): string {
-  const startMin = timeToMinutes(startStr);
-  if (Number.isNaN(startMin)) return "";
-  
-  const defaultEndMin = (startMin + 8 * 60) % 1440;
-  const notifyMin = timeToMinutes(dailyNotifyStr);
-
-  if (!Number.isNaN(notifyMin) && isTimeInWindow(notifyMin, startMin, defaultEndMin)) {
-    return minutesToTime(notifyMin - 30);
-  }
-  return minutesToTime(defaultEndMin);
-}
-
-/**
- * Calculate the automatic DND Start time given an End time and the Daily Digest time.
- * Defaults to end - 8 hours, but if the window collides with Daily Digest time,
- * floors the start time to 30 minutes after Daily Digest time.
- *
- * @param endStr - The "HH:MM" end time.
- * @param dailyNotifyStr - The "HH:MM" daily digest time.
- * @returns The collision-safe "HH:MM" start time.
- */
-function calculateAutoDndStart(endStr: string, dailyNotifyStr: string): string {
-  const endMin = timeToMinutes(endStr);
-  if (Number.isNaN(endMin)) return "";
-
-  const defaultStartMin = (((endMin - 8 * 60) % 1440) + 1440) % 1440;
-  const notifyMin = timeToMinutes(dailyNotifyStr);
-
-  if (!Number.isNaN(notifyMin) && isTimeInWindow(notifyMin, defaultStartMin, endMin)) {
-    return minutesToTime(notifyMin + 30);
-  }
-  return minutesToTime(defaultStartMin);
-}
 
 /**
  * Settings panel controlling notification preferences:
@@ -131,9 +44,6 @@ export function NotificationSettingsPanel(): React.JSX.Element {
   const [notifyIfZero, setNotifyIfZero] = useState<boolean>(false);
   const [dndStart, setDndStart] = useState<string>("");
   const [dndEnd, setDndEnd] = useState<string>("");
-
-  const dndStartRef = useRef<HTMLInputElement>(null);
-  const dndEndRef = useRef<HTMLInputElement>(null);
   const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
 
   useEffect(() => {
@@ -189,61 +99,6 @@ export function NotificationSettingsPanel(): React.JSX.Element {
       updates.immediate_job_threshold = ensuredThreshold;
     }
     save(updates);
-  }
-
-  /**
-   * Force clear partial DOM time input buffer and state when deleting a DND window.
-   */
-  function clearDndInputs(): void {
-    setDndStart("");
-    setDndEnd("");
-    if (dndStartRef.current) dndStartRef.current.value = "";
-    if (dndEndRef.current) dndEndRef.current.value = "";
-    save({ dnd_start: null, dnd_end: null });
-  }
-
-  /**
-   * Handle blur events on the DND Start input. Enforces +/-8h pairing or dual deletion.
-   */
-  function handleDndStartBlur(): void {
-    // Rule: If deleted or incomplete (e.g. 06:--), clear both UI buffer and server state
-    if (!dndStart) {
-      clearDndInputs();
-      return;
-    }
-    // Rule: If user entered Start time and End is empty, automatically add End time (avoiding Daily Digest collision)
-    if (dndStart && !dndEnd) {
-      const notifyTime = dailyTime || DEFAULT_DAILY_TIME;
-      const calcEnd = calculateAutoDndEnd(dndStart, notifyTime);
-      setDndEnd(calcEnd);
-      if (dndEndRef.current) dndEndRef.current.value = calcEnd;
-      save({ dnd_start: dndStart, dnd_end: calcEnd });
-      return;
-    }
-    // Both values present
-    save({ dnd_start: dndStart, dnd_end: dndEnd });
-  }
-
-  /**
-   * Handle blur events on the DND End input. Enforces +/-8h pairing or dual deletion.
-   */
-  function handleDndEndBlur(): void {
-    // Rule: If deleted or incomplete (e.g. --:30), clear both UI buffer and server state
-    if (!dndEnd) {
-      clearDndInputs();
-      return;
-    }
-    // Rule: If user entered End time without Start time, automatically set Start time (avoiding Daily Digest collision)
-    if (dndEnd && !dndStart) {
-      const notifyTime = dailyTime || DEFAULT_DAILY_TIME;
-      const calcStart = calculateAutoDndStart(dndEnd, notifyTime);
-      setDndStart(calcStart);
-      if (dndStartRef.current) dndStartRef.current.value = calcStart;
-      save({ dnd_start: calcStart, dnd_end: dndEnd });
-      return;
-    }
-    // Both values present
-    save({ dnd_start: dndStart, dnd_end: dndEnd });
   }
 
   if (isLoading) {
@@ -386,42 +241,15 @@ export function NotificationSettingsPanel(): React.JSX.Element {
           </div>
         )}
 
-        {/* Do Not Disturb */}
-        <div className={styles.dndRow}>
-          <label className={styles.label}>{s.dndLabel}</label>
-          <div className={styles.dndInputs}>
-            <div className={styles.dndGroup}>
-              <label htmlFor="dnd-start" className={styles.dndGroupLabel}>
-                {s.dndStartLabel}
-              </label>
-              <input
-                id="dnd-start"
-                ref={dndStartRef}
-                className={styles.input}
-                type="time"
-                value={dndStart}
-                disabled={isPending}
-                onChange={(e) => setDndStart(e.target.value)}
-                onBlur={handleDndStartBlur}
-              />
-            </div>
-            <div className={styles.dndGroup}>
-              <label htmlFor="dnd-end" className={styles.dndGroupLabel}>
-                {s.dndEndLabel}
-              </label>
-              <input
-                id="dnd-end"
-                ref={dndEndRef}
-                className={styles.input}
-                type="time"
-                value={dndEnd}
-                disabled={isPending}
-                onChange={(e) => setDndEnd(e.target.value)}
-                onBlur={handleDndEndBlur}
-              />
-            </div>
-          </div>
-        </div>
+        <DndFields
+          dndStart={dndStart}
+          dndEnd={dndEnd}
+          dailyTime={dailyTime}
+          isPending={isPending}
+          onSave={save}
+          onDndStartChange={setDndStart}
+          onDndEndChange={setDndEnd}
+        />
       </div>
 
       {toast && (
