@@ -51,3 +51,42 @@
   font-size: 12px;
   color: var(--color-error);
 }
+
+.controlsRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.thresholdWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--color-surface-2);
+  padding: 6px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.thresholdLabel {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.thresholdInput {
+  width: 40px;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+}
+
+.thresholdInput::-webkit-inner-spin-button,
+.thresholdInput::-webkit-outer-spin-button {
+  opacity: 1;
+}

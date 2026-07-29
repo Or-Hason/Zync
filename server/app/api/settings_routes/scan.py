@@ -14,6 +14,10 @@ from app.scraper.jobmaster import run_scan
 from app.services.gemini_client import get_gemini_client
 from app.services.ollama_client import get_ollama_client
 from app.services.settings_store import SettingsStore, get_settings_store
+from pydantic import BaseModel
+
+class ManualScanPayload(BaseModel):
+    manual_threshold: int | None = None
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -23,7 +27,7 @@ NO_ACTIVE_RESUME_SCAN_MESSAGE = (
     "Please upload or select a resume first."
 )
 
-async def _run_manual_scan() -> None:
+async def _run_manual_scan(manual_threshold: int | None = None) -> None:
     """Background coroutine: execute a full scan and clear the in-progress flag.
     
     Opens its own DB session so it can outlive the HTTP request that spawned it.
@@ -47,7 +51,8 @@ async def _run_manual_scan() -> None:
                 base_url=cfg.jobmaster_base_url,
                 initial_limit=cfg.initial_scan_limit,
                 max_per_scan=cfg.max_jobs_per_scan,
-                notification_threshold=scan_cfg["notification_score_threshold"],
+                notification_threshold=manual_threshold if manual_threshold is not None else scan_cfg["notification_score_threshold"],
+                is_manual=True,
             )
             await store.set_last_scan_at(datetime.now(timezone.utc).isoformat())
             await db.commit()
@@ -69,6 +74,7 @@ async def _run_manual_scan() -> None:
     summary="Trigger an immediate background scan",
 )
 async def trigger_manual_scan(
+    payload: ManualScanPayload | None = None,
     store: SettingsStore = Depends(get_settings_store),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
@@ -90,7 +96,8 @@ async def trigger_manual_scan(
         )
     await store.set_scan_in_progress(True)
     await db.commit()
-    asyncio.create_task(_run_manual_scan())
+    threshold = payload.manual_threshold if payload else None
+    asyncio.create_task(_run_manual_scan(threshold))
     logger.info("Manual scan triggered.")
     return {"status": "started"}
 

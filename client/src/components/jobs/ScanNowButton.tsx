@@ -1,6 +1,7 @@
 import { en } from "@/i18n/en";
 import { fetchScanSettings, SETTINGS_KEYS, useTriggerScan } from "@/api/settingsApi";
 import type { ScanSettings } from "@/api/settingsApi";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import styles from "./ScanNowButton.module.css";
 
@@ -18,6 +19,8 @@ export function ScanNowButton(): React.JSX.Element {
     refetchInterval: (query) => (query.state.data?.scan_in_progress ? 2000 : false),
   });
 
+  const [threshold, setThreshold] = useState<string>("60");
+
   const { mutate: trigger, isPending, error } = useTriggerScan();
 
   const isScanning = isPending || (settings?.scan_in_progress ?? false);
@@ -31,16 +34,33 @@ export function ScanNowButton(): React.JSX.Element {
 
   return (
     <div className={styles.wrap}>
-      <button
-        type="button"
-        className={styles.btn}
-        disabled={isScanning}
-        aria-label={isScanning ? s.scanningAriaLabel : s.ariaLabel}
-        onClick={(): void => trigger()}
-      >
-        {isScanning && <span className={styles.spinner} aria-hidden="true" />}
-        {isScanning ? s.scanning : s.label}
-      </button>
+      <div className={styles.controlsRow}>
+        <div className={styles.thresholdWrap}>
+          <label htmlFor="manual-scan-threshold" className={styles.thresholdLabel}>
+            Required Scan Score:
+          </label>
+          <input
+            id="manual-scan-threshold"
+            type="number"
+            min="0"
+            max="100"
+            value={threshold}
+            onChange={(e) => setThreshold(e.target.value)}
+            className={styles.thresholdInput}
+            title="Notification Score Threshold (0-100)"
+          />
+        </div>
+        <button
+          type="button"
+          className={styles.btn}
+          disabled={isScanning}
+          aria-label={isScanning ? s.scanningAriaLabel : s.ariaLabel}
+          onClick={(): void => trigger({ manual_threshold: parseInt(threshold) || 0 })}
+        >
+          {isScanning && <span className={styles.spinner} aria-hidden="true" />}
+          {isScanning ? s.scanning : s.label}
+        </button>
+      </div>
       {errorMsg && (
         <p className={styles.error} role="alert">
           {errorMsg}

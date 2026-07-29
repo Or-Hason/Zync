@@ -33,6 +33,7 @@ async def run_scan(
     initial_limit: int,
     max_per_scan: int,
     notification_threshold: int | None = None,
+    is_manual: bool = False,
 ) -> ScanReport:
     """Run one full JobMaster scan and return a summary report.
 
@@ -104,6 +105,7 @@ async def run_scan(
             search_term=target_role,
             is_first_run=is_first_run,
             notification_threshold=notification_threshold,
+            is_manual=is_manual,
         )
         if kind == KIND_GEMINI_UNAVAILABLE:
             logger.warning("Scan stopped early — all Gemini models rate-limited.")
@@ -120,16 +122,20 @@ async def run_scan(
         mode = notif_cfg.get("notification_mode", "A")
         should_emit = True
         
-        if mode == "B":
-            should_emit = False
-        elif mode == "C":
-            new_total = await store.increment_immediate_jobs_counter(job_count)
-            threshold = int(notif_cfg.get("immediate_job_threshold", 5))
-            if new_total >= threshold:
-                job_count = new_total
-                await store.reset_immediate_jobs_counter()
-            else:
+        # Explicit UI-triggered manual scans ALWAYS bypass background auto-scan notification thresholds.
+        if is_manual:
+            logger.info("Scan is manual UI-triggered. Bypassing Mode B/C threshold checks.")
+        else:
+            if mode == "B":
                 should_emit = False
+            elif mode == "C":
+                new_total = await store.increment_immediate_jobs_counter(job_count)
+                threshold = int(notif_cfg.get("immediate_job_threshold", 5))
+                if new_total >= threshold:
+                    job_count = new_total
+                    await store.reset_immediate_jobs_counter()
+                else:
+                    should_emit = False
                 
         if should_emit:
             now_utc = datetime.now(timezone.utc)

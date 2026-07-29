@@ -37,6 +37,73 @@ def _time_in_dnd_window(
     return t >= s or t < e
 
 
+def _time_to_minutes(time_str: str) -> int:
+    """Convert ``HH:MM`` string to total minutes from midnight.
+
+    Args:
+        time_str: Time in ``HH:MM`` format.
+
+    Returns:
+        Minutes since midnight (0–1439).
+    """
+    try:
+        parts = time_str.split(":")
+        return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, IndexError, AttributeError):
+        return 0
+
+
+def _minutes_to_time(total_min: int) -> str:
+    """Convert total minutes to an ``HH:MM`` formatted clock string.
+
+    Args:
+        total_min: Minutes, possibly negative or wrapping over 1440.
+
+    Returns:
+        Formatted ``HH:MM`` string.
+    """
+    m = ((total_min % 1440) + 1440) % 1440
+    return f"{m // 60:02d}:{m % 60:02d}"
+
+
+def _calc_auto_dnd_end(start_str: str, daily_notify_str: str | None) -> str:
+    """Compute default +8h DND end time, adjusting by -30m if it collides with digest time.
+
+    Args:
+        start_str: DND start time in ``HH:MM`` format.
+        daily_notify_str: Daily digest notification time in ``HH:MM`` format or ``None``.
+
+    Returns:
+        Collision-safe DND end time string in ``HH:MM`` format.
+    """
+    start_m = _time_to_minutes(start_str)
+    end_m = (start_m + 8 * 60) % 1440
+    default_end = _minutes_to_time(end_m)
+    if daily_notify_str and _time_in_dnd_window(daily_notify_str, start_str, default_end):
+        notify_m = _time_to_minutes(daily_notify_str)
+        return _minutes_to_time(notify_m - 30)
+    return default_end
+
+
+def _calc_auto_dnd_start(end_str: str, daily_notify_str: str | None) -> str:
+    """Compute default -8h DND start time, adjusting by +30m if it collides with digest time.
+
+    Args:
+        end_str: DND end time in ``HH:MM`` format.
+        daily_notify_str: Daily digest notification time in ``HH:MM`` format or ``None``.
+
+    Returns:
+        Collision-safe DND start time string in ``HH:MM`` format.
+    """
+    end_m = _time_to_minutes(end_str)
+    start_m = ((end_m - 8 * 60) % 1440 + 1440) % 1440
+    default_start = _minutes_to_time(start_m)
+    if daily_notify_str and _time_in_dnd_window(daily_notify_str, default_start, end_str):
+        notify_m = _time_to_minutes(daily_notify_str)
+        return _minutes_to_time(notify_m + 30)
+    return default_start
+
+
 @router.get(
     "/notifications",
     response_model=NotificationSettings,
@@ -68,6 +135,22 @@ async def update_notification_settings(
     Raises:
         HTTPException: 400 when ``daily_notify_time`` is inside the DND window.
     """
+    # Enforce non-empty defaults for modes B & C
+    if payload.notification_mode in ("B", "C") and not payload.daily_notify_time:
+        payload.daily_notify_time = "18:00"
+    if payload.notification_mode == "C" and not payload.immediate_job_threshold:
+        payload.immediate_job_threshold = 5
+
+    # Enforce DND pairing and collision-aware +/- 8 hour window calculation
+    notify_time = payload.daily_notify_time or "18:00"
+    if payload.dnd_start and not payload.dnd_end:
+        payload.dnd_end = _calc_auto_dnd_end(payload.dnd_start, notify_time)
+    elif payload.dnd_end and not payload.dnd_start:
+        payload.dnd_start = _calc_auto_dnd_start(payload.dnd_end, notify_time)
+    elif not payload.dnd_start and not payload.dnd_end:
+        payload.dnd_start = None
+        payload.dnd_end = None
+
     if (
         payload.daily_notify_time
         and payload.dnd_start

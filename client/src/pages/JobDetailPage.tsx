@@ -70,7 +70,7 @@ export function JobDetailPage(): React.JSX.Element {
     return (
       <main className={pageStyles.page}>
         <p className={pageStyles.placeholder}>{s.notFound}</p>
-        <Link to="/">{s.backToDashboard}</Link>
+        <Link to="/explorer">{s.backToJobExplorer}</Link>
       </main>
     );
   }

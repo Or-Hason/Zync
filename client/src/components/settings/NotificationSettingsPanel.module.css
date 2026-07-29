@@ -1,0 +1,165 @@
+/* NotificationSettingsPanel.module.css */
+
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  position: relative;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.2px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Single row: label above, control below ───────────────────────────── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--color-text-dim);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+
+.select {
+  width: 100%;
+  max-width: 220px;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition);
+  display: block;
+  cursor: pointer;
+  appearance: auto;
+}
+
+.input {
+  width: 100%;
+  max-width: 220px;
+  height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  outline: none;
+  transition: border-color var(--transition);
+  display: block;
+}
+
+.select:focus,
+.input:focus {
+  border-color: var(--color-accent);
+}
+
+.select:disabled,
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── DND row: two time inputs side by side ────────────────────────────── */
+
+.dndRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dndInputs {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.dndGroup {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dndGroupLabel {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Checkbox row ─────────────────────────────────────────────────────── */
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.checkboxLabel {
+  font-size: 13px;
+  color: var(--color-text);
+  user-select: none;
+  cursor: pointer;
+}
+
+/* ── State messages ───────────────────────────────────────────────────── */
+
+.loading {
+  font-size: 13px;
+  color: var(--color-text-dim);
+}
+
+.error {
+  font-size: 13px;
+  color: var(--color-error);
+}

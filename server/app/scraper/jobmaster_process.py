@@ -23,6 +23,7 @@ async def process_link(
     search_term: str,
     is_first_run: bool,
     notification_threshold: int | None = None,
+    is_manual: bool = False,
 ) -> tuple[str | None, object | None]:
     """Fetch one job page and run it through the scoring pipeline.
     

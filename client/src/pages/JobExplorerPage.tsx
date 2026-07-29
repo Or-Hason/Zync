@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SortingState } from "@tanstack/react-table";
+import { useSearchParams } from "react-router-dom";
 import { en } from "@/i18n/en";
 import { useJobs, useJobSkills, useMarkAllJobsRead } from "@/api/jobsApi";
 import { useResumes, useActiveResume } from "@/api/resumeApi";
@@ -28,6 +29,7 @@ function loadSavedState(): { filters: JobFiltersParams; search: string } {
 
 export function JobExplorerPage(): React.JSX.Element {
   const qc = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const saved = useMemo(loadSavedState, []);
 
   const [filters, setFilters] = useState<JobFiltersParams>(saved.filters);
@@ -35,6 +37,22 @@ export function JobExplorerPage(): React.JSX.Element {
   const [debouncedSearch, setDebouncedSearch] = useState(saved.search);
   const [sorting, setSorting] = useState<SortingState>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Detect URL filter parameters (e.g., from clicking job match notification action) and refresh table. */
+  useEffect(() => {
+    const isNewParam = searchParams.get("is_new") === "true";
+    const isUnreadParam = searchParams.get("is_unread") === "true";
+    if (isNewParam || isUnreadParam) {
+      console.log("[JobExplorerPage] Notification action filter params detected in URL -> applying filters & refreshing table");
+      setFilters((prev) => ({
+        ...prev,
+        is_new: isNewParam ? true : prev.is_new,
+        is_unread: isUnreadParam ? true : prev.is_unread,
+      }));
+      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, qc]);
 
   /** Debounce free-text search so the API is not hit on every keystroke. */
   useEffect(() => {

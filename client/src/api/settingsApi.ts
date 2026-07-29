@@ -86,8 +86,12 @@ export async function fetchScanSettings(): Promise<ScanSettings> {
   return res.json() as Promise<ScanSettings>;
 }
 
-async function triggerScan(): Promise<void> {
-  const res = await fetch(`${BASE}/scan/trigger`, { method: "POST" });
+async function triggerScan(payload?: { manual_threshold: number }): Promise<void> {
+  const res = await fetch(`${BASE}/scan/trigger`, {
+    method: "POST",
+    headers: payload ? { "Content-Type": "application/json" } : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
   if (!res.ok) {
     throw Object.assign(new Error("Scan trigger failed"), { status: res.status });
   }
@@ -217,10 +221,10 @@ export function useUpdateScanSettings(): ReturnType<
 
 /** Trigger an immediate background scan. Invalidates the scan cache on success. */
 export function useTriggerScan(): ReturnType<
-  typeof useMutation<void, Error & { status?: number }, void>
+  typeof useMutation<void, Error & { status?: number }, { manual_threshold: number } | undefined>
 > {
   const qc = useQueryClient();
-  return useMutation<void, Error & { status?: number }, void>({
+  return useMutation<void, Error & { status?: number }, { manual_threshold: number } | undefined>({
     mutationFn: triggerScan,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: SETTINGS_KEYS.scan });

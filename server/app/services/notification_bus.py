@@ -54,7 +54,7 @@ def remove_client(q: asyncio.Queue[str | None]) -> None:
 
 
 def is_dnd_active(dnd_start: str | None, dnd_end: str | None) -> bool:
-    """Return whether the current UTC time falls inside the DND window.
+    """Return whether the current local time falls inside the DND window.
 
     Handles windows that span midnight (e.g. 23:00→07:00).  If either
     boundary is ``None`` the window is considered inactive.
@@ -64,11 +64,11 @@ def is_dnd_active(dnd_start: str | None, dnd_end: str | None) -> bool:
         dnd_end: DND window end in ``HH:MM`` format, or ``None``.
 
     Returns:
-        ``True`` when the current UTC time is within the DND window.
+        ``True`` when the current local time is within the DND window.
     """
     if not dnd_start or not dnd_end:
         return False
-    now_t = int(datetime.now(timezone.utc).strftime("%H%M"))
+    now_t = int(datetime.now().strftime("%H%M"))
     s = int(dnd_start.replace(":", ""))
     e = int(dnd_end.replace(":", ""))
     if s <= e:

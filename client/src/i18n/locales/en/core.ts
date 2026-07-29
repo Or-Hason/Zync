@@ -24,6 +24,7 @@ export const notifications = {
   /** In-app toast shown on non-Explorer pages with navigation action. */
   viewMatches: "View matches",
   viewJob: "View job",
+  refreshNewUnread: "Refresh Table",
   ctaBanner: "Enable notifications to get background alerts.",
   enableBtn: "Enable",
   dontAskAgain: "Don't ask me again",
