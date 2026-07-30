@@ -63,6 +63,8 @@ export const settings = {
     savedToast: "Notification settings saved.",
     saveError: "Failed to save notification settings.",
     dndConflictError: "Daily notify time cannot be inside the Do Not Disturb window.",
+    dndModeSwitchConflict: "DND window conflicts with the Daily Digest Time. Adjust either field to save.",
+    lockedHint: "Settings locked because background auto-scan is disabled.",
     modeLabel: "Notification Mode",
     modeA: "Every scan (Immediate)",
     modeB: "Daily Digest",

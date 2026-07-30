@@ -143,6 +143,9 @@ async def update_notification_settings(
 
     # Enforce DND pairing and collision-aware +/- 8 hour window calculation
     notify_time = payload.daily_notify_time or "18:00"
+    if payload.notification_mode == "A":
+        notify_time = None
+
     if payload.dnd_start and not payload.dnd_end:
         payload.dnd_end = _calc_auto_dnd_end(payload.dnd_start, notify_time)
     elif payload.dnd_end and not payload.dnd_start:
@@ -152,7 +155,8 @@ async def update_notification_settings(
         payload.dnd_end = None
 
     if (
-        payload.daily_notify_time
+        payload.notification_mode in ("B", "C")
+        and payload.daily_notify_time
         and payload.dnd_start
         and payload.dnd_end
         and _time_in_dnd_window(

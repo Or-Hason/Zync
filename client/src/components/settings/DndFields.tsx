@@ -10,9 +10,6 @@ import styles from "./NotificationSettingsPanel.module.css";
 
 const s = en.pages.settings.notificationsPanel;
 
-/** Default value for Daily Digest Time when in Mode B or C. */
-const DEFAULT_DAILY_TIME = "18:00";
-
 interface DndFieldsProps {
   /** Current DND start value from the parent. */
   dndStart: string;
@@ -28,6 +25,8 @@ interface DndFieldsProps {
   onDndStartChange: (value: string) => void;
   /** Notify the parent of DND end value changes. */
   onDndEndChange: (value: string) => void;
+  /** When true, highlight both inputs to indicate a conflict with Daily Digest Time. */
+  hasConflict?: boolean;
 }
 
 /**
@@ -46,6 +45,7 @@ export function DndFields({
   onSave,
   onDndStartChange,
   onDndEndChange,
+  hasConflict = false,
 }: DndFieldsProps): React.JSX.Element {
   const dndStartRef = useRef<HTMLInputElement>(null);
   const dndEndRef = useRef<HTMLInputElement>(null);
@@ -72,7 +72,7 @@ export function DndFields({
     }
     // Rule: If user entered Start time and End is empty, automatically add End time (avoiding Daily Digest collision)
     if (dndStart && !dndEnd) {
-      const notifyTime = dailyTime || DEFAULT_DAILY_TIME;
+      const notifyTime = dailyTime;
       const calcEnd = calculateAutoDndEnd(dndStart, notifyTime);
       onDndEndChange(calcEnd);
       if (dndEndRef.current) dndEndRef.current.value = calcEnd;
@@ -94,7 +94,7 @@ export function DndFields({
     }
     // Rule: If user entered End time without Start time, automatically set Start time (avoiding Daily Digest collision)
     if (dndEnd && !dndStart) {
-      const notifyTime = dailyTime || DEFAULT_DAILY_TIME;
+      const notifyTime = dailyTime;
       const calcStart = calculateAutoDndStart(dndEnd, notifyTime);
       onDndStartChange(calcStart);
       if (dndStartRef.current) dndStartRef.current.value = calcStart;
@@ -116,7 +116,7 @@ export function DndFields({
           <input
             id="dnd-start"
             ref={dndStartRef}
-            className={styles.input}
+            className={`${styles.input}${hasConflict ? ` ${styles.conflictInput}` : ""}`}
             type="time"
             value={dndStart}
             disabled={isPending}
@@ -131,7 +131,7 @@ export function DndFields({
           <input
             id="dnd-end"
             ref={dndEndRef}
-            className={styles.input}
+            className={`${styles.input}${hasConflict ? ` ${styles.conflictInput}` : ""}`}
             type="time"
             value={dndEnd}
             disabled={isPending}

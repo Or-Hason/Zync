@@ -1,10 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useScanSettings } from "@/api/settingsApi";
 import { en } from "@/i18n/en";
-import {
-  useNotificationSettings,
-  useUpdateNotificationSettings,
-  NotificationSettings,
-} from "@/api/settingsApi";
 import {
   isInAppSoundEnabled,
   playInAppNotificationSound,
@@ -12,94 +8,48 @@ import {
 } from "@/services/notifications";
 import { Toast } from "@/components/resume/Toast";
 import { DndFields } from "./DndFields";
+import { useNotificationPanelState, DEFAULT_DAILY_TIME, DEFAULT_THRESHOLD, MAX_THRESHOLD } from "./useNotificationPanelState";
 import styles from "./NotificationSettingsPanel.module.css";
 
 const s = en.pages.settings.notificationsPanel;
 
-/** Default value for Daily Digest Time when in Mode B or C. */
-const DEFAULT_DAILY_TIME = "18:00";
-/** Default value for Immediate Threshold when in Mode C. */
-const DEFAULT_THRESHOLD = 5;
-/** Maximum allowed value for Immediate Threshold. */
-const MAX_THRESHOLD = 20;
-
-type ToastState = { message: string; kind: "success" | "error" } | null;
-
 /**
  * Settings panel controlling notification preferences:
- * mode (A, B, C), daily digest time, automatic DND pairing (+/- 8h), immediate threshold (max 20), and in-app sound alert.
+ * mode (A, B, C), daily digest time, automatic DND pairing (+/- 8h),
+ * immediate threshold (max 20), and in-app sound alert.
  *
  * @returns The rendered notification preferences panel.
  */
 export function NotificationSettingsPanel(): React.JSX.Element {
-  const { data: settings, isLoading, isError } = useNotificationSettings();
-  const { mutate: update, isPending } = useUpdateNotificationSettings();
+  const {
+    settings,
+    isLoading,
+    isError,
+    isPending,
+    toast,
+    setToast,
+    mode,
+    dailyTime,
+    setDailyTime,
+    notifyIfZero,
+    setNotifyIfZero,
+    dndStart,
+    setDndStart,
+    dndEnd,
+    setDndEnd,
+    threshold,
+    setThreshold,
+    dndConflict,
+    save,
+    handleModeChange,
+    attemptConflictResolution,
+  } = useNotificationPanelState();
 
-  const [toast, setToast] = useState<ToastState>(null);
+  const { data: scanSettings } = useScanSettings();
   const [inAppSound, setInAppSound] = useState<boolean>(isInAppSoundEnabled());
 
-  // Local drafts — never empty for required fields in modes B & C
-  const [mode, setMode] = useState<NotificationSettings["notification_mode"]>("A");
-  const [dailyTime, setDailyTime] = useState<string>(DEFAULT_DAILY_TIME);
-  const [notifyIfZero, setNotifyIfZero] = useState<boolean>(false);
-  const [dndStart, setDndStart] = useState<string>("");
-  const [dndEnd, setDndEnd] = useState<string>("");
-  const [threshold, setThreshold] = useState<number>(DEFAULT_THRESHOLD);
-
-  useEffect(() => {
-    if (settings) {
-      setMode(settings.notification_mode);
-      setDailyTime(settings.daily_notify_time ?? DEFAULT_DAILY_TIME);
-      setNotifyIfZero(settings.notify_if_zero);
-      setDndStart(settings.dnd_start ?? "");
-      setDndEnd(settings.dnd_end ?? "");
-      setThreshold(settings.immediate_job_threshold ?? DEFAULT_THRESHOLD);
-    }
-  }, [settings]);
-
-  function save(partial: Partial<NotificationSettings>): void {
-    if (!settings) return;
-    const next: NotificationSettings = { ...settings, ...partial };
-
-    update(next, {
-      onSuccess: () => setToast({ message: s.savedToast, kind: "success" }),
-      onError: (err: Error & { status?: number }) => {
-        const isConflict = err.message?.toLowerCase().includes("do not disturb");
-        const message = isConflict ? s.dndConflictError : (err.message || s.saveError);
-        setToast({ message, kind: "error" });
-        // Rollback local drafts to last persisted values on error
-        if (settings) {
-          setMode(settings.notification_mode);
-          setDailyTime(settings.daily_notify_time ?? DEFAULT_DAILY_TIME);
-          setNotifyIfZero(settings.notify_if_zero);
-          setDndStart(settings.dnd_start ?? "");
-          setDndEnd(settings.dnd_end ?? "");
-          setThreshold(settings.immediate_job_threshold ?? DEFAULT_THRESHOLD);
-        }
-      },
-    });
-  }
-
-  /**
-   * Handle mode selection changes. Enforces non-empty default values for B and C modes.
-   *
-   * @param val - The new notification mode selected by the user.
-   */
-  function handleModeChange(val: NotificationSettings["notification_mode"]): void {
-    setMode(val);
-    const updates: Partial<NotificationSettings> = { notification_mode: val };
-    if (val === "B" || val === "C") {
-      const ensuredTime = dailyTime || DEFAULT_DAILY_TIME;
-      setDailyTime(ensuredTime);
-      updates.daily_notify_time = ensuredTime;
-    }
-    if (val === "C") {
-      const ensuredThreshold = threshold || DEFAULT_THRESHOLD;
-      setThreshold(ensuredThreshold);
-      updates.immediate_job_threshold = ensuredThreshold;
-    }
-    save(updates);
-  }
+  const autoScanOff = scanSettings?.auto_scan_enabled === false;
+  const isDisabled = isPending || autoScanOff;
 
   if (isLoading) {
     return (
@@ -122,6 +72,11 @@ export function NotificationSettingsPanel(): React.JSX.Element {
       <div className={styles.header}>
         <h2 className={styles.title}>{s.title}</h2>
         <p className={styles.subtitle}>{s.subtitle}</p>
+        {autoScanOff && (
+          <p className={styles.lockedHint}>
+            {s.lockedHint}
+          </p>
+        )}
       </div>
 
       <div className={styles.content}>
@@ -134,8 +89,8 @@ export function NotificationSettingsPanel(): React.JSX.Element {
             id="notif-mode"
             className={styles.select}
             value={mode}
-            disabled={isPending}
-            onChange={(e) => handleModeChange(e.target.value as NotificationSettings["notification_mode"])}
+            disabled={isDisabled}
+            onChange={(e) => handleModeChange(e.target.value as "A" | "B" | "C")}
           >
             <option value="A">{s.modeA}</option>
             <option value="B">{s.modeB}</option>
@@ -150,6 +105,7 @@ export function NotificationSettingsPanel(): React.JSX.Element {
             type="checkbox"
             className={styles.checkbox}
             checked={inAppSound}
+            disabled={isDisabled}
             onChange={(e) => {
               const val = e.target.checked;
               setInAppSound(val);
@@ -172,17 +128,21 @@ export function NotificationSettingsPanel(): React.JSX.Element {
             </label>
             <input
               id="daily-time"
-              className={styles.input}
+              className={`${styles.input}${dndConflict ? ` ${styles.conflictInput}` : ""}`}
               type="time"
               value={dailyTime}
-              disabled={isPending}
+              disabled={isDisabled}
               onChange={(e) => {
                 if (e.target.value) setDailyTime(e.target.value);
               }}
               onBlur={() => {
                 const val = dailyTime || DEFAULT_DAILY_TIME;
                 if (!dailyTime) setDailyTime(val);
-                save({ daily_notify_time: val });
+                if (dndConflict) {
+                  attemptConflictResolution(val, dndStart, dndEnd);
+                } else {
+                  save({ daily_notify_time: val });
+                }
               }}
             />
             <span className={styles.hint}>{s.dailyTimeHint}</span>
@@ -197,7 +157,7 @@ export function NotificationSettingsPanel(): React.JSX.Element {
               type="checkbox"
               className={styles.checkbox}
               checked={notifyIfZero}
-              disabled={isPending}
+              disabled={isDisabled}
               onChange={(e) => {
                 const val = e.target.checked;
                 setNotifyIfZero(val);
@@ -223,7 +183,7 @@ export function NotificationSettingsPanel(): React.JSX.Element {
               min="1"
               max={String(MAX_THRESHOLD)}
               value={threshold}
-              disabled={isPending}
+              disabled={isDisabled}
               onChange={(e) => {
                 const val = parseInt(e.target.value, 10);
                 if (!Number.isNaN(val)) setThreshold(val);
@@ -244,9 +204,18 @@ export function NotificationSettingsPanel(): React.JSX.Element {
         <DndFields
           dndStart={dndStart}
           dndEnd={dndEnd}
-          dailyTime={dailyTime}
-          isPending={isPending}
-          onSave={save}
+          dailyTime={mode === "A" ? "" : dailyTime}
+          isPending={isDisabled}
+          hasConflict={dndConflict}
+          onSave={(partial) => {
+            if (dndConflict) {
+              const nextStart = partial.dnd_start !== undefined ? (partial.dnd_start ?? "") : dndStart;
+              const nextEnd = partial.dnd_end !== undefined ? (partial.dnd_end ?? "") : dndEnd;
+              attemptConflictResolution(dailyTime, nextStart, nextEnd, partial);
+            } else {
+              save(partial);
+            }
+          }}
           onDndStartChange={setDndStart}
           onDndEndChange={setDndEnd}
         />
@@ -256,6 +225,7 @@ export function NotificationSettingsPanel(): React.JSX.Element {
         <Toast
           message={toast.message}
           kind={toast.kind}
+          duration={toast.duration}
           onDismiss={() => setToast(null)}
         />
       )}

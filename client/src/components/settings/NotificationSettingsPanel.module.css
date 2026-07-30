@@ -30,6 +30,13 @@
   line-height: 1.55;
 }
 
+.lockedHint {
+  font-size: 13px;
+  color: var(--color-warning);
+  margin-top: 4px;
+  font-weight: 500;
+}
+
 .content {
   display: flex;
   flex-direction: column;
@@ -162,4 +169,14 @@
 .error {
   font-size: 13px;
   color: var(--color-error);
+}
+
+/* ── Conflict state: DND vs Daily Digest time overlap ────────────────── */
+
+.conflictInput {
+  border-color: hsl(0, 55%, 55%);
+}
+
+.conflictInput:focus {
+  border-color: hsl(0, 55%, 55%);
 }
