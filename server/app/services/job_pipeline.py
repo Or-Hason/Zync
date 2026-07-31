@@ -30,7 +30,13 @@ from app.services.blacklist_filter import find_blacklist_hit
 from app.services.duplicate_detection import DuplicateAssessment, detect_duplicate
 from app.services.gemini_client import GeminiUnavailableError
 from app.services.job_parser import sanitize_job_data
-from app.services.job_repository import load_existing_jobs, load_scored_jobs, new_job
+from app.services.job_repository import (
+    load_existing_jobs,
+    load_scored_jobs,
+    new_job,
+    new_job_score,
+    upsert_job_score,
+)
 from app.services.score_cache import find_cached_score
 from app.services.system_advice import LOW_SCORE_THRESHOLD, build_system_advice
 from app.services.text_similarity import comparison_string
@@ -58,6 +64,9 @@ class PipelineOutcome:
         advice: The generated ``system_advice`` string when scored/cached.
         score_cached: Whether the score was reused from cache.
         blacklist_keyword: The matched keyword on a blacklist rejection.
+        scored_by_resume_id: The resume :attr:`score` was computed against.
+            ``None`` when nothing was scored — the job row itself no longer
+            carries this, it lives on the ``job_scores`` row.
     """
 
     kind: str
@@ -67,6 +76,7 @@ class PipelineOutcome:
     advice: str | None = None
     score_cached: bool = False
     blacklist_keyword: str | None = None
+    scored_by_resume_id: UUID | None = None
 
 
 async def _persist(db: AsyncSession, job: Job) -> None:
@@ -74,6 +84,23 @@ async def _persist(db: AsyncSession, job: Job) -> None:
     db.add(job)
     await db.flush()
     await db.refresh(job)
+
+
+def _score_details(score: ScoreResult) -> dict:
+    """Project a :class:`ScoreResult` into the ``score_details`` JSONB shape.
+
+    Args:
+        score: The Gemini (or cached) scoring result.
+
+    Returns:
+        The ``{rationale, matched_skills, missing_skills}`` dict persisted on the
+        ``job_scores`` row and replayed by the score cache.
+    """
+    return {
+        "rationale": score.rationale,
+        "matched_skills": score.matched_skills,
+        "missing_skills": score.missing_skills,
+    }
 
 
 async def run_job_pipeline(
@@ -208,18 +235,12 @@ async def run_job_pipeline(
 
     if score is not None:
         match_score: int | None = score.match_score
-        score_details: dict | None = {
-            "rationale": score.rationale,
-            "matched_skills": score.matched_skills,
-            "missing_skills": score.missing_skills,
-        }
         scored_by: UUID | None = active_resume.id
         job_status = (
             "auto_rejected" if match_score < LOW_SCORE_THRESHOLD else "not_applied"
         )
     else:
         match_score = None
-        score_details = None
         scored_by = None
         job_status = "not_applied"
 
@@ -236,15 +257,31 @@ async def run_job_pipeline(
         source_url=source_url,
         assessment=assessment,
         status=job_status,
-        match_score=match_score,
-        score_details=score_details,
-        scored_by_resume_id=scored_by,
         source_type=source_type,
         search_filters=search_filters,
     )
     await _persist(db, job)
+
+    # The job row is brand new, so no score can exist for it yet — a plain insert
+    # is correct here; re-scoring an existing job goes through ``rescore_job``.
+    if score is not None:
+        db.add(
+            new_job_score(
+                job_id=job.id,
+                resume_id=active_resume.id,
+                match_score=score.match_score,
+                score_details=_score_details(score),
+            )
+        )
+        await db.flush()
+
     return PipelineOutcome(
-        kind=KIND_SCORED, parsed=parsed, job=job, score=score, advice=advice
+        kind=KIND_SCORED,
+        parsed=parsed,
+        job=job,
+        score=score,
+        advice=advice,
+        scored_by_resume_id=scored_by,
     )
 
 
@@ -256,97 +293,76 @@ async def rescore_job(
 ) -> PipelineOutcome:
     """Re-score an existing job with the current active resume. Skips Ollama.
 
-    Resolves to the canonical row (following canonical_job_id if needed), calls
-    Gemini with stored job data, creates a child row to preserve rescore history,
-    and updates the canonical row's score in-place so the Explorer always shows
-    the latest result.
-    """
-    from uuid import uuid4
+    Scores Gemini against the stored job data and UPSERTs the result into the
+    ``job_scores`` row for (job, active resume). The job row itself is never
+    duplicated — a second CV scoring the same job adds a second ``job_scores``
+    row, not a second job.
 
+    Args:
+        db: Active async DB session.
+        gemini: Gemini client (``is_configured`` + ``score`` coroutine).
+        job_id: The job to re-score.
+
+    Returns:
+        A :class:`PipelineOutcome`; ``KIND_SCORED`` carries the new score and the
+        resume it belongs to.
+    """
     from app.api.resumes_active import load_active_resume
 
     job = await db.get(Job, job_id)
     if job is None:
         return PipelineOutcome(kind=KIND_GEMINI_UNAVAILABLE)
 
-    # Resolve to canonical — rescoring always operates on the original row.
-    canonical = job
-    if job.canonical_job_id is not None:
-        canonical = await db.get(Job, job.canonical_job_id) or job
-
     active_resume = await load_active_resume(db)
     if active_resume is None:
-        return PipelineOutcome(kind=KIND_NO_ACTIVE_RESUME, job=canonical)
+        return PipelineOutcome(kind=KIND_NO_ACTIVE_RESUME, job=job)
 
     if not gemini.is_configured:
-        return PipelineOutcome(kind=KIND_GEMINI_UNCONFIGURED, job=canonical)
+        return PipelineOutcome(kind=KIND_GEMINI_UNCONFIGURED, job=job)
 
     try:
         score = await gemini.score(
-            canonical.job_title,
-            canonical.job_description,
-            canonical.requirements or {},
+            job.job_title,
+            job.job_description,
+            job.requirements or {},
             active_resume.structured_data,
         )
     except GeminiUnavailableError:
-        return PipelineOutcome(kind=KIND_GEMINI_UNAVAILABLE, job=canonical)
+        return PipelineOutcome(kind=KIND_GEMINI_UNAVAILABLE, job=job)
 
     if score is not None:
-        match_score: int | None = score.match_score
-        score_details: dict | None = {
-            "rationale": score.rationale,
-            "matched_skills": score.matched_skills,
-            "missing_skills": score.missing_skills,
-        }
-        new_status = "auto_rejected" if match_score < LOW_SCORE_THRESHOLD else "not_applied"
-    else:
-        match_score = None
-        score_details = None
-        new_status = "not_applied"
-
-    # Archive the previous canonical score before overwriting so every CV that
-    # has scored this job is preserved as a child row.
-    if canonical.scored_by_resume_id is not None and canonical.scored_by_resume_id != active_resume.id:
-        archive = Job(
-            id=uuid4(),
-            company_name=canonical.company_name,
-            job_title=canonical.job_title,
-            company_description=canonical.company_description,
-            job_description=canonical.job_description,
-            raw_content=canonical.raw_content,
-            requirements=canonical.requirements,
-            source_type=canonical.source_type,
-            source_url=canonical.source_url,
-            match_score=canonical.match_score,
-            scored_by_resume_id=canonical.scored_by_resume_id,
-            score_details=canonical.score_details,
-            status=canonical.status,
-            is_duplicate=True,
-            duplicate_chance=100,
-            published_at=canonical.published_at,
-            application_options=canonical.application_options or [],
-            recommended_apply_method=canonical.recommended_apply_method,
-            canonical_job_id=canonical.id,
+        await upsert_job_score(
+            db,
+            job_id=job.id,
+            resume_id=active_resume.id,
+            match_score=score.match_score,
+            score_details=_score_details(score),
         )
-        db.add(archive)
+        # Only auto-managed statuses follow the score; a user-set status
+        # (applied, interviewing, …) is never overwritten by a re-score.
+        if job.status in ("not_applied", "auto_rejected"):
+            job.status = (
+                "auto_rejected"
+                if score.match_score < LOW_SCORE_THRESHOLD
+                else "not_applied"
+            )
+        await db.flush()
 
-    # Update canonical with the latest score.
-    if canonical.status in ("not_applied", "auto_rejected"):
-        canonical.status = new_status
-    canonical.match_score = match_score
-    canonical.score_details = score_details
-    canonical.scored_by_resume_id = active_resume.id
-
-    await db.flush()
-    await db.refresh(canonical)
+    await db.refresh(job)
 
     advice = build_system_advice(
-        match_score=match_score,
-        is_duplicate=canonical.is_duplicate,
-        duplicate_chance=canonical.duplicate_chance,
+        match_score=score.match_score if score else None,
+        is_duplicate=job.is_duplicate,
+        duplicate_chance=job.duplicate_chance,
         matched_job_status=None,
     )
-    return PipelineOutcome(kind=KIND_SCORED, job=canonical, score=score, advice=advice)
+    return PipelineOutcome(
+        kind=KIND_SCORED,
+        job=job,
+        score=score,
+        advice=advice,
+        scored_by_resume_id=active_resume.id if score is not None else None,
+    )
 
 
 async def _handle_cache_hit(
@@ -366,11 +382,6 @@ async def _handle_cache_hit(
     flagged as a duplicate so the UI surfaces the warning, and the cached score
     is replayed verbatim.
     """
-    cached_score_details = {
-        "rationale": cached.rationale,
-        "matched_skills": cached.matched_skills,
-        "missing_skills": cached.missing_skills,
-    }
     cached_status = (
         "auto_rejected" if cached.match_score < LOW_SCORE_THRESHOLD else "not_applied"
     )
@@ -391,13 +402,19 @@ async def _handle_cache_hit(
         source_url=source_url,
         assessment=cached_assessment,
         status=cached_status,
-        match_score=cached.match_score,
-        score_details=cached_score_details,
-        scored_by_resume_id=active_resume_id,
         source_type=source_type,
         search_filters=search_filters,
     )
     await _persist(db, job)
+    db.add(
+        new_job_score(
+            job_id=job.id,
+            resume_id=active_resume_id,
+            match_score=cached.match_score,
+            score_details=_score_details(cached),
+        )
+    )
+    await db.flush()
     return PipelineOutcome(
         kind=KIND_CACHE_HIT,
         parsed=parsed,
@@ -405,4 +422,5 @@ async def _handle_cache_hit(
         score=cached,
         advice=advice,
         score_cached=True,
+        scored_by_resume_id=active_resume_id,
     )

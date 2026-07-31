@@ -27,17 +27,29 @@ export interface JobScrapeResponse {
   recommended_apply_method?: string | null;
 }
 
+/** One CV's match score for a job, from the `job_scores` bridging table. */
+export interface JobScoreEntry {
+  resume_id: string;
+  resume_name: string | null;
+  match_score: number;
+}
+
+/**
+ * A job as rendered in the Explorer grid.
+ *
+ * There is no flat `match_score`: a job holds one score per CV, and which one
+ * the grid surfaces depends on the active CV / "Show Best Match" toggle. Use
+ * `selectPrimaryScore` rather than reading `scores` positionally.
+ */
 export interface JobListItem {
   id: string;
   job_title: string | null;
   company_name: string | null;
   status: string;
-  match_score: number | null;
   source_type: string;
   created_at: string;
-  scored_by_resume_id: string | null;
-  /** All resume IDs that have scored this job (canonical + rescore children). */
-  scored_resume_ids: string[];
+  /** Every CV that has scored this job, highest score first. */
+  scores: JobScoreEntry[];
   requirements: JobRequirements | null;
   has_cover_letter: boolean;
   is_unread: boolean;

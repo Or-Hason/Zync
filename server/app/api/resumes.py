@@ -263,7 +263,8 @@ async def delete_resume(
     # Core DELETE (not ORM ``db.delete``) so the DB-level ``ON DELETE`` rules run
     # without SQLAlchemy lazy-loading the ``applications`` relationship — that
     # lazy load would raise under the async engine. The FK cascade removes
-    # applications; the jobs FK nulls ``scored_by_resume_id``.
+    # applications, cover letters, and this CV's job_scores rows — the jobs
+    # themselves survive, they just lose this CV's score.
     await db.execute(sa_delete(Resume).where(Resume.id == resume_id))
 
     if was_active:

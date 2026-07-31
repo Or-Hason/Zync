@@ -8,6 +8,7 @@ public API surface and should only be called from ``jobs.py``.
 from __future__ import annotations
 
 import logging
+from uuid import UUID
 
 from fastapi import HTTPException, status
 from fastapi.responses import JSONResponse
@@ -83,20 +84,31 @@ def classification_rejection(parsed: ParsedJob) -> JSONResponse | None:
 
 
 def build_scrape_response(
-    job: Job, score: ScoreResult | None, advice: str, score_cached: bool
+    job: Job,
+    score: ScoreResult | None,
+    advice: str,
+    score_cached: bool,
+    scored_by_resume_id: UUID | None = None,
 ) -> JobScrapeResponse:
     """Assemble the full scrape+score response payload.
+
+    ``match_score`` / ``scored_by_resume_id`` are injected from the scoring
+    result rather than read off the job row — a job has one score per CV, stored
+    in ``job_scores``, and this response describes exactly one of them.
 
     Args:
         job: The persisted job row.
         score: The score result (or ``None`` when scoring failed).
         advice: The generated ``system_advice`` string.
         score_cached: Whether the score was reused from cache.
+        scored_by_resume_id: The resume ``score`` was computed against.
 
     Returns:
         The :class:`JobScrapeResponse`.
     """
     base = JobRead.model_validate(job).model_dump()
+    base["match_score"] = score.match_score if score else None
+    base["scored_by_resume_id"] = scored_by_resume_id if score else None
     return JobScrapeResponse(
         **base,
         rationale=score.rationale if score else None,

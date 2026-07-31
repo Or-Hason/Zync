@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 from app.db.session import get_db
 from app.main import app
 from app.models.job import Job
+from app.models.job_score import JobScore
 from app.models.resume import Resume
 from app.schemas.job import ScoreResult
 from app.services.gemini_client import get_gemini_client
@@ -69,6 +70,9 @@ class _Result:
     def all(self) -> list[Any]:
         return list(self._rows)
 
+    def first(self) -> Any:
+        return self._rows[0] if self._rows else None
+
     def scalars(self) -> "_Result":
         return self
 
@@ -87,8 +91,8 @@ class ExistingRow:
 class ScoredRow:
     """Projection row for the score-cache query.
 
-    Mirrors the columns selected by ``load_scored_jobs`` (id, title, description,
-    match_score, score_details, raw_content).
+    Mirrors the columns selected by ``load_scored_jobs`` — the jobs ⋈ job_scores
+    join (id, title, description, match_score, score_details, raw_content).
     """
 
     def __init__(
@@ -112,12 +116,18 @@ class FakeJobSession:
 
     def __init__(self) -> None:
         self.added: list[Job] = []
+        self.scores: list[JobScore] = []
         self.existing_rows: list[ExistingRow] = []
         self.scored_rows: list[ScoredRow] = []
         self.active_resumes: list[Resume] = []
 
-    def add(self, obj: Job) -> None:
-        self.added.append(obj)
+    def add(self, obj: Any) -> None:
+        # job_scores rows are tracked separately so assertions on inserted jobs
+        # stay unaffected by the bridging-table writes.
+        if isinstance(obj, JobScore):
+            self.scores.append(obj)
+        else:
+            self.added.append(obj)
 
     async def flush(self) -> None:
         for obj in self.added:
@@ -133,6 +143,8 @@ class FakeJobSession:
         names = [desc.get("name") for desc in stmt.column_descriptions]
         if "match_score" in names:
             return _Result(self.scored_rows)
+        if "JobScore" in names:
+            return _Result(self.scores)
         if "Resume" in names:
             return _Result(self.active_resumes)
         return _Result(self.existing_rows)

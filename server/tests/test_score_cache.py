@@ -1,4 +1,4 @@
-"""Tests for TF-IDF score caching (>0.90 reuse via scored_by_resume_id)."""
+"""Tests for TF-IDF score caching (>0.90 reuse of a resume's job_scores rows)."""
 
 from __future__ import annotations
 

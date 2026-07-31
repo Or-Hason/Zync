@@ -89,6 +89,31 @@
   animation: rowHighlight 3s ease-out forwards;
 }
 
+.cvCellWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/*
+ * Marks the displayed CV as the user's Active Resume. Deliberately scoped to
+ * the cell — highlighting the whole row would collide with the unread/new
+ * row indicators.
+ */
+.cvActiveBadge {
+  display: inline-block;
+  padding: 1px 6px;
+  background: rgba(76, 175, 130, 0.18);
+  color: var(--color-success);
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .cvMoreBadge {
   display: inline-block;
   padding: 1px 5px;

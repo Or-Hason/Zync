@@ -4,7 +4,7 @@ import { type SortingState } from "@tanstack/react-table";
 import { useSearchParams } from "react-router-dom";
 import { en } from "@/i18n/en";
 import { useJobs, useJobSkills, useMarkAllJobsRead } from "@/api/jobsApi";
-import { useResumes, useActiveResume } from "@/api/resumeApi";
+import { useActiveResume } from "@/api/resumeApi";
 import type { JobFiltersParams } from "@/types/job";
 import { JobTable } from "@/components/explorer/JobTable";
 import { JobFilters } from "@/components/explorer/JobFilters";
@@ -18,6 +18,7 @@ const s = en.pages.explorer;
 const SEARCH_DEBOUNCE_MS = 300;
 const EMPTY_FILTERS: JobFiltersParams = {};
 const FILTER_SESSION_KEY = "zync_explorer_filters";
+const BEST_MATCH_SESSION_KEY = "zync_explorer_best_match";
 
 function loadSavedState(): { filters: JobFiltersParams; search: string } {
   try {
@@ -36,6 +37,9 @@ export function JobExplorerPage(): React.JSX.Element {
   const [searchInput, setSearchInput] = useState(saved.search);
   const [debouncedSearch, setDebouncedSearch] = useState(saved.search);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [showBestMatch, setShowBestMatch] = useState<boolean>(
+    () => sessionStorage.getItem(BEST_MATCH_SESSION_KEY) === "true",
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /** Detect URL filter parameters (e.g., from clicking job match notification action) and refresh table. */
@@ -66,6 +70,11 @@ export function JobExplorerPage(): React.JSX.Element {
     sessionStorage.setItem(FILTER_SESSION_KEY, JSON.stringify({ filters, search: searchInput }));
   }, [filters, searchInput]);
 
+  /** Persist the Best Match override so it survives navigation. */
+  useEffect(() => {
+    sessionStorage.setItem(BEST_MATCH_SESSION_KEY, String(showBestMatch));
+  }, [showBestMatch]);
+
   const activeFilters: JobFiltersParams = useMemo(
     () => ({ ...filters, q: debouncedSearch || undefined }),
     [filters, debouncedSearch],
@@ -74,13 +83,7 @@ export function JobExplorerPage(): React.JSX.Element {
   const { data: jobs = [], isLoading, isFetching } = useJobs(activeFilters);
   const { mutate: markAllRead, isPending: isMarkingAllRead } = useMarkAllJobsRead();
   const { data: allSkills = [] } = useJobSkills();
-  const { data: resumes = [] } = useResumes();
   const { data: activeResume } = useActiveResume();
-
-  const resumeMap = useMemo(
-    () => new Map(resumes.map((r) => [r.id, r.version_name])),
-    [resumes],
-  );
 
   const handleFilterChange = useCallback((patch: Partial<JobFiltersParams>): void => {
     setFilters((prev) => ({ ...prev, ...patch }));
@@ -104,6 +107,23 @@ export function JobExplorerPage(): React.JSX.Element {
           <p className={pageStyles.pageSubtitle}>{s.subtitle}</p>
         </div>
         <div className={styles.headerRight}>
+          {/*
+            Best Match override. OFF (default) = Active Resume priority;
+            ON = always surface the highest-scoring CV per job.
+          */}
+          <label className={styles.toggle} title={s.showBestMatchTooltip}>
+            <input
+              type="checkbox"
+              className={styles.toggleInput}
+              checked={showBestMatch}
+              onChange={(e): void => setShowBestMatch(e.target.checked)}
+              aria-label={s.showBestMatch}
+            />
+            <span className={styles.toggleTrack} aria-hidden>
+              <span className={styles.toggleThumb} />
+            </span>
+            <span className={styles.toggleLabel}>{s.showBestMatch}</span>
+          </label>
           <ActiveResumeSelector />
           <ScanNowButton />
           <button
@@ -150,10 +170,13 @@ export function JobExplorerPage(): React.JSX.Element {
       ) : (
         <JobTable
           jobs={jobs}
-          resumeMap={resumeMap}
           sorting={sorting}
           onSortingChange={setSorting}
           targetRole={activeResume?.target_role ?? undefined}
+          // Passing the ID (not the object) is what makes the grid re-render
+          // with the new CV/Score priority the moment the active CV changes.
+          activeResumeId={activeResume?.id ?? null}
+          showBestMatch={showBestMatch}
         />
       )}
     </main>

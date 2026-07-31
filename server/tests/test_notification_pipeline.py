@@ -13,6 +13,7 @@ import pytest
 from app.scraper import jobmaster
 from app.scraper.jobmaster import run_scan
 from app.services import notification_bus
+from app.schemas.job import ScoreResult
 from app.services.job_pipeline import KIND_GEMINI_UNAVAILABLE, KIND_SCORED, PipelineOutcome
 
 
@@ -132,13 +133,19 @@ def _resume(role: str = "Backend") -> Any:
     )
 
 
-def _make_job(*, match_score: int | None = 85, notified_at: Any = None) -> Any:
+def _make_job(*, notified_at: Any = None) -> Any:
+    """Build a job row stand-in. Scores live on the outcome, not on the job."""
     return SimpleNamespace(
         id=uuid4(),
         job_title="Test Job",
-        match_score=match_score,
         notified_at=notified_at,
     )
+
+
+def _outcome(job: Any, match_score: int | None) -> PipelineOutcome:
+    """Build a scored pipeline outcome carrying the (job, score) pair."""
+    score = ScoreResult(match_score=match_score) if match_score is not None else None
+    return PipelineOutcome(kind=KIND_SCORED, job=job, score=score)
 
 
 def _patch_html(monkeypatch: pytest.MonkeyPatch, n_links: int = 1) -> None:
@@ -161,7 +168,8 @@ class TestRunScanNotificationHook:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_html(monkeypatch)
-        job = _make_job(match_score=85)
+        job = _make_job()
+        outcome = _outcome(job, 85)
         emits: list[dict] = []
 
         async def _fake_emit(
@@ -177,7 +185,7 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
         monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
@@ -201,7 +209,8 @@ class TestRunScanNotificationHook:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_html(monkeypatch)
-        job = _make_job(match_score=70)
+        job = _make_job()
+        outcome = _outcome(job, 70)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -210,7 +219,7 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
         monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
@@ -234,7 +243,8 @@ class TestRunScanNotificationHook:
 
         _patch_html(monkeypatch)
         already_stamped = datetime.now(timezone.utc)
-        job = _make_job(match_score=90, notified_at=already_stamped)
+        job = _make_job(notified_at=already_stamped)
+        outcome = _outcome(job, 90)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -243,7 +253,7 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
         monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
@@ -264,7 +274,8 @@ class TestRunScanNotificationHook:
     ) -> None:
         """Default threshold=None must never touch notification_bus."""
         _patch_html(monkeypatch)
-        job = _make_job(match_score=100)
+        job = _make_job()
+        outcome = _outcome(job, 100)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -273,7 +284,7 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
         monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(

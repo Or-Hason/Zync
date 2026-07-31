@@ -11,8 +11,10 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import Integer, cast, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.job import Job
+from app.models.job_score import JobScore
 from app.schemas.job import ParsedJob
 from app.services.duplicate_detection import DuplicateAssessment, ExistingJob
 from app.services.score_cache import ScoredJob
@@ -29,13 +31,13 @@ def new_job(
     source_url: str | None,
     assessment: DuplicateAssessment,
     status: str,
-    match_score: int | None = None,
-    score_details: dict | None = None,
-    scored_by_resume_id: UUID | None = None,
     source_type: str = "manual",
     search_filters: dict | None = None,
 ) -> Job:
     """Build a ``jobs`` ORM row from parsed data and pipeline results.
+
+    Scores are deliberately absent: they belong to :class:`JobScore` rows keyed
+    by (job, resume) — see :func:`new_job_score`.
 
     Args:
         parsed: Sanitised extracted job fields.
@@ -43,9 +45,6 @@ def new_job(
         source_url: Originating URL (``None`` for raw-text ingestion).
         assessment: Duplicate-detection outcome.
         status: The job status to persist.
-        match_score: Optional 0–100 score.
-        score_details: Optional ``{rationale, matched_skills, missing_skills}``.
-        scored_by_resume_id: Resume active at scoring time (if scored).
         source_type: Ingestion source (``"manual"`` or a scraper id like
             ``"jobmaster"``).
         search_filters: Scraper search metadata persisted to the row's
@@ -65,9 +64,6 @@ def new_job(
         source_type=source_type,
         source_url=source_url,
         search_filters=search_filters,
-        match_score=match_score,
-        scored_by_resume_id=scored_by_resume_id,
-        score_details=score_details,
         status=status,
         is_duplicate=assessment.is_duplicate,
         duplicate_chance=assessment.duplicate_chance,
@@ -75,6 +71,82 @@ def new_job(
         application_options=parsed.application_options or [],
         recommended_apply_method=parsed.recommended_apply_method,
     )
+
+
+def new_job_score(
+    *,
+    job_id: UUID,
+    resume_id: UUID,
+    match_score: int,
+    score_details: dict | None,
+) -> JobScore:
+    """Build a transient ``job_scores`` row for a freshly scored job.
+
+    Only valid for a job that cannot already have a score for this resume (i.e.
+    a row created in the same request). Use :func:`upsert_job_score` otherwise.
+
+    Args:
+        job_id: The scored job's primary key.
+        resume_id: The resume the score was computed against.
+        match_score: The 0–100 score.
+        score_details: ``{rationale, matched_skills, missing_skills}`` dict.
+
+    Returns:
+        A transient :class:`JobScore` instance (not yet added to a session).
+    """
+    return JobScore(
+        id=uuid4(),
+        job_id=job_id,
+        resume_id=resume_id,
+        match_score=match_score,
+        score_details=score_details,
+    )
+
+
+async def upsert_job_score(
+    db: AsyncSession,
+    *,
+    job_id: UUID,
+    resume_id: UUID,
+    match_score: int,
+    score_details: dict | None,
+) -> JobScore:
+    """Insert or update the single score row for a (job, resume) pair.
+
+    Mirrors the ``uq_job_scores_job_resume`` constraint at the application level
+    so a re-score overwrites the CV's previous result instead of accumulating
+    history rows.
+
+    Args:
+        db: Active async DB session.
+        job_id: The scored job's primary key.
+        resume_id: The resume the score was computed against.
+        match_score: The new 0–100 score.
+        score_details: ``{rationale, matched_skills, missing_skills}`` dict.
+
+    Returns:
+        The persisted :class:`JobScore` row.
+    """
+    stmt = select(JobScore).where(
+        JobScore.job_id == job_id, JobScore.resume_id == resume_id
+    )
+    existing = (await db.execute(stmt)).scalars().first()
+
+    if existing is not None:
+        existing.match_score = match_score
+        existing.score_details = score_details
+        await db.flush()
+        return existing
+
+    score = new_job_score(
+        job_id=job_id,
+        resume_id=resume_id,
+        match_score=match_score,
+        score_details=score_details,
+    )
+    db.add(score)
+    await db.flush()
+    return score
 
 
 async def load_existing_jobs(db: AsyncSession) -> list[ExistingJob]:
@@ -112,16 +184,17 @@ async def load_scored_jobs(db: AsyncSession, resume_id: UUID) -> list[ScoredJob]
     Returns:
         Scored jobs (``match_score`` present) as :class:`ScoredJob` projections.
     """
-    stmt = select(
-        Job.id,
-        Job.job_title,
-        Job.job_description,
-        Job.match_score,
-        Job.score_details,
-        Job.raw_content,
-    ).where(
-        Job.scored_by_resume_id == resume_id,
-        Job.match_score.isnot(None),
+    stmt = (
+        select(
+            Job.id,
+            Job.job_title,
+            Job.job_description,
+            JobScore.match_score,
+            JobScore.score_details,
+            Job.raw_content,
+        )
+        .join(JobScore, JobScore.job_id == Job.id)
+        .where(JobScore.resume_id == resume_id)
     )
     rows = (await db.execute(stmt)).all()
     return [
@@ -197,10 +270,10 @@ async def list_jobs(
         q: Free-text search across job_title, company_name, job_description.
         date_from: ISO date string (``YYYY-MM-DD``) — only jobs on/after this date.
         date_to: ISO date string (``YYYY-MM-DD``) — only jobs on/before this date.
-        min_score: Only include jobs with match_score >= this value.
+        min_score: Only include jobs scored >= this value by at least one CV.
         role: LIKE filter on job_title.
         company: LIKE filter on company_name.
-        cv_id: Exact match on scored_by_resume_id.
+        cv_id: Only jobs scored by this resume.
         source_type: ``"manual"`` or ``"auto"`` (any non-manual source_type).
         is_new: When True, only jobs created in the last 24 hours.
         is_unread: When True, only jobs where viewed_at IS NULL (user has not viewed the detail).
@@ -210,11 +283,12 @@ async def list_jobs(
         status: Exact job status match.
 
     Returns:
-        Filtered list of :class:`Job` rows, ordered by ``created_at`` DESC.
+        Filtered list of :class:`Job` rows (with ``scores`` and each score's
+        ``resume`` eager-loaded), ordered by ``created_at`` DESC.
     """
     stmt = (
         select(Job)
-        .where(Job.canonical_job_id.is_(None))
+        .options(selectinload(Job.scores).selectinload(JobScore.resume))
         .order_by(Job.created_at.desc())
         .limit(200)
     )
@@ -244,7 +318,15 @@ async def list_jobs(
             pass
 
     if min_score is not None:
-        stmt = stmt.where(Job.match_score >= min_score)
+        # EXISTS rather than a JOIN so a job with several scores is not duplicated.
+        stmt = stmt.where(
+            select(func.count())
+            .select_from(JobScore)
+            .where(JobScore.job_id == Job.id, JobScore.match_score >= min_score)
+            .correlate(Job)
+            .scalar_subquery()
+            > 0
+        )
 
     if role:
         stmt = stmt.where(func.lower(Job.job_title).like(f"%{role.lower()}%"))
@@ -253,7 +335,14 @@ async def list_jobs(
         stmt = stmt.where(func.lower(Job.company_name).like(f"%{company.lower()}%"))
 
     if cv_id is not None:
-        stmt = stmt.where(Job.scored_by_resume_id == cv_id)
+        stmt = stmt.where(
+            select(func.count())
+            .select_from(JobScore)
+            .where(JobScore.job_id == Job.id, JobScore.resume_id == cv_id)
+            .correlate(Job)
+            .scalar_subquery()
+            > 0
+        )
 
     if source_type == "auto":
         stmt = stmt.where(Job.source_type != "manual")
@@ -303,31 +392,6 @@ async def list_jobs(
 
     rows = (await db.execute(stmt)).scalars().all()
     return list(rows)
-
-
-async def get_child_resume_ids(
-    db: AsyncSession, parent_ids: list[UUID]
-) -> dict[UUID, list[UUID]]:
-    """Return a map of canonical job ID → list of resume IDs from child rescore rows.
-
-    Args:
-        db: Active async DB session.
-        parent_ids: Canonical job IDs to look up child CVs for.
-
-    Returns:
-        Dict mapping each parent ID to a list of scored_by_resume_id values.
-    """
-    if not parent_ids:
-        return {}
-    stmt = select(Job.canonical_job_id, Job.scored_by_resume_id).where(
-        Job.canonical_job_id.in_(parent_ids),
-        Job.scored_by_resume_id.isnot(None),
-    )
-    rows = (await db.execute(stmt)).all()
-    result: dict[UUID, list[UUID]] = {}
-    for row in rows:
-        result.setdefault(row.canonical_job_id, []).append(row.scored_by_resume_id)
-    return result
 
 
 async def mark_all_jobs_read(db: AsyncSession) -> int:
@@ -397,37 +461,3 @@ async def list_job_skills(db: AsyncSession) -> list[str]:
     """)
     rows = (await db.execute(stmt)).all()
     return [row[0] for row in rows]
-
-
-async def update_job_with_score(
-    db: AsyncSession,
-    job_id: UUID,
-    *,
-    match_score: int | None,
-    score_details: dict | None,
-    scored_by_resume_id: UUID | None,
-    status: str,
-) -> Job | None:
-    """Apply scoring results to an existing job row (e.g. a bypassed blacklist hit).
-
-    Args:
-        db: Active async DB session.
-        job_id: Primary key of the job to update.
-        match_score: New 0–100 score (or ``None``).
-        score_details: ``{rationale, matched_skills, missing_skills}`` dict.
-        scored_by_resume_id: Resume that produced the score.
-        status: New job status after scoring.
-
-    Returns:
-        The refreshed :class:`Job` row, or ``None`` when not found.
-    """
-    job = await db.get(Job, job_id)
-    if job is None:
-        return None
-    job.match_score = match_score
-    job.score_details = score_details
-    job.scored_by_resume_id = scored_by_resume_id
-    job.status = status
-    await db.flush()
-    await db.refresh(job)
-    return job

@@ -8,6 +8,9 @@ export const explorer = {
   noResults: "No jobs match the current filters.",
   loading: "Loading jobs…",
   shiftClickTooltip: "Shift+Click a column to add a secondary sort",
+  showBestMatch: "Show Best Match",
+  showBestMatchTooltip:
+    "Ignore your active CV and show the highest-scoring CV for every job",
   filters: {
     freeSearchLabel: "Free Search",
     search: "Search jobs…",
@@ -43,6 +46,9 @@ export const explorer = {
     columnDate: "Date Added",
     columnSource: "Source",
     columnCv: "CV Used",
+    cvActiveBadge: "Active",
+    cvActiveTooltip: "This is your currently active CV",
+    cvOtherScoresAriaLabel: "other CVs have also scored this job",
     noData: "No jobs found. Add a job or run a scan to get started.",
     sourceManual: "Manual",
     sourceAuto: "Auto",

@@ -27,7 +27,7 @@ from app.api._job_pipeline_helpers import (
 )
 from app.db.session import get_db
 from app.models.job import Job
-from app.schemas.job import JobListItem, JobRead, JobScrapeRequest, JobScrapeResponse, ScoreResult
+from app.schemas.job import JobListItem, JobRead, JobScrapeRequest, JobScrapeResponse
 from app.services.gemini_client import GeminiClient, get_gemini_client
 from app.services.job_pipeline import (
     KIND_BLACKLISTED,
@@ -41,7 +41,6 @@ from app.services.job_pipeline import (
     run_job_pipeline,
 )
 from app.services.job_repository import (
-    get_child_resume_ids,
     list_job_skills,
     list_jobs,
     load_scored_jobs,
@@ -50,6 +49,7 @@ from app.services.job_repository import (
 )
 from app.services.ollama_client import OllamaClient, get_ollama_client
 from app.services.score_cache import find_cached_score_raw
+from app.services.score_selection import select_score, to_score_items, to_score_result
 from app.services.settings_store import SettingsStore, get_settings_store
 from app.services.text_similarity import comparison_string
 
@@ -157,7 +157,11 @@ async def scrape_job(
         extra={"job_id": str(outcome.job.id), "source_type": outcome.job.source_type},
     )
     return build_scrape_response(
-        outcome.job, outcome.score, outcome.advice, score_cached=outcome.score_cached
+        outcome.job,
+        outcome.score,
+        outcome.advice,
+        score_cached=outcome.score_cached,
+        scored_by_resume_id=outcome.scored_by_resume_id,
     )
 
 
@@ -184,6 +188,11 @@ async def list_jobs_endpoint(
     db: AsyncSession = Depends(get_db),
 ) -> list[JobListItem]:
     """Return up to 200 jobs matching the given filters, newest first.
+
+    Each item carries a ``scores`` array — one entry per CV that has scored the
+    job, with the CV's name resolved from the eager-loaded ``resumes`` join. The
+    grid decides which entry to surface (active CV first, or best match); the API
+    stays presentation-agnostic.
 
     All filter params are optional; omitting them returns all jobs (capped at 200).
     Returns an empty list (not 404) when no jobs match.
@@ -215,34 +224,25 @@ async def list_jobs_endpoint(
         status=job_status,
     )
 
-    # Aggregate all resume IDs from child rescore rows.
-    parent_ids = [j.id for j in rows]
-    child_cv_map = await get_child_resume_ids(db, parent_ids)
+    job_ids = [j.id for j in rows]
 
     # Query which jobs have cover letters.
     from app.models.cover_letter import CoverLetter
     cover_letter_jobs = set(
         (await db.execute(
-            select(CoverLetter.job_id).where(CoverLetter.job_id.in_(parent_ids)).distinct()
+            select(CoverLetter.job_id).where(CoverLetter.job_id.in_(job_ids)).distinct()
         )).scalars().all()
     )
 
-    items: list[JobListItem] = []
-    for j in rows:
-        all_cv_ids = list(
-            dict.fromkeys(
-                [j.scored_by_resume_id] + child_cv_map.get(j.id, [])
-                if j.scored_by_resume_id
-                else child_cv_map.get(j.id, [])
-            )
-        )
-        item = JobListItem.model_validate(j).model_copy(
+    items: list[JobListItem] = [
+        JobListItem.model_validate(j).model_copy(
             update={
-                "scored_resume_ids": all_cv_ids,
+                "scores": to_score_items(j.scores),
                 "has_cover_letter": j.id in cover_letter_jobs,
             }
         )
-        items.append(item)
+        for j in rows
+    ]
 
     logger.info("Jobs listed", extra={"count": len(items)})
     return items
@@ -310,8 +310,10 @@ async def get_job(
 ) -> JobScrapeResponse:
     """Return the full job record for use by the notification deep-link route.
 
-    Reconstructs score fields from the persisted ``score_details`` JSONB so the
-    frontend's ``JobCard`` renders exactly as it did at ingestion time.
+    Reconstructs score fields from the ``job_scores`` row so the frontend's
+    ``JobCard`` renders exactly as it did at ingestion time. The active CV's
+    score wins; failing that (this job was never scored with the active CV) the
+    highest-scoring CV is shown, mirroring the Explorer's priority logic.
 
     Args:
         job_id: Target job primary key.
@@ -326,17 +328,22 @@ async def get_job(
     job = await db.get(Job, job_id)
     if job is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
-    details = job.score_details or {}
-    score: ScoreResult | None = None
-    if details and job.match_score is not None:
-        score = ScoreResult(
-            match_score=job.match_score,
-            rationale=details.get("rationale"),
-            matched_skills=details.get("matched_skills", []),
-            missing_skills=details.get("missing_skills", []),
-        )
+
+    from app.api.resumes_active import load_active_resume
+
+    active_resume = await load_active_resume(db)
+    selected = select_score(
+        job.scores, active_resume.id if active_resume is not None else None
+    )
+
     logger.info("Job fetched by ID", extra={"job_id": str(job_id)})
-    return build_scrape_response(job, score, "", score_cached=False)
+    return build_scrape_response(
+        job,
+        to_score_result(selected) if selected is not None else None,
+        "",
+        score_cached=False,
+        scored_by_resume_id=selected.resume_id if selected is not None else None,
+    )
 
 
 @router.get(

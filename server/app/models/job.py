@@ -8,7 +8,6 @@ from uuid import UUID, uuid4
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
-    ForeignKey,
     Integer,
     String,
     Text,
@@ -21,6 +20,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.application import Application
+    from app.models.job_score import JobScore
 
 logger = logging.getLogger(__name__)
 
@@ -62,16 +62,6 @@ class Job(Base):
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     search_filters: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    match_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # Set after a successful Gemini score (or cache hit) to record which resume
-    # was active at scoring time; nulled if that resume is later deleted.
-    scored_by_resume_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("resumes.id", ondelete="SET NULL", name="fk_jobs_scored_by_resume"),
-        nullable=True,
-    )
-    # Non-score Gemini output kept as flexible JSONB so the cache can replay it:
-    # { "rationale": str, "matched_skills": [...], "missing_skills": [...] }.
-    score_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[str] = mapped_column(
         String(50),
         nullable=False,
@@ -101,13 +91,17 @@ class Job(Base):
     viewed_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
-    # When set, this row is a rescore variant of the canonical job row it points to.
-    # Canonical rows have canonical_job_id = NULL.
-    canonical_job_id: Mapped[UUID | None] = mapped_column(
-        ForeignKey("jobs.id", ondelete="SET NULL", name="fk_jobs_canonical_job"),
-        nullable=True,
-    )
 
     applications: Mapped[list[Application]] = relationship(
         "Application", back_populates="job", cascade="all, delete-orphan"
+    )
+    # Every (CV, score) pair recorded for this job. Eager-loaded because the
+    # async engine raises MissingGreenlet on an implicit lazy load, and every
+    # consumer of a Job needs its scores.
+    scores: Mapped[list[JobScore]] = relationship(
+        "JobScore",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="selectin",
     )

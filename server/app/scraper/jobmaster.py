@@ -18,7 +18,7 @@ from app.scraper.jobmaster_utils import (
     select_new_links,
     apply_scan_caps,
 )
-from app.scraper.jobmaster_process import process_link
+from app.scraper.jobmaster_process import NotifiableJob, process_link
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ async def run_scan(
     )
 
     processed = 0
-    notifiable_jobs: list = []
+    notifiable_jobs: list[NotifiableJob] = []
     for url in to_process:
         kind, notifiable_job = await process_link(
             url,
@@ -139,11 +139,12 @@ async def run_scan(
                 
         if should_emit:
             now_utc = datetime.now(timezone.utc)
-            for job in notifiable_jobs:
+            for notifiable in notifiable_jobs:
+                job = notifiable.job
                 await notification_bus.emit_job_match(
                     job_id=str(job.id),
                     job_title=job.job_title or "",
-                    match_score=job.match_score,
+                    match_score=notifiable.match_score,
                     job_count=job_count,
                     silent=dnd_silent,
                 )

@@ -1,7 +1,9 @@
 """Job page fetching and pipeline execution logic."""
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,23 @@ from app.services.job_scraper import ContentTooLargeError, JobFetchError, extrac
 from app.scraper.jobmaster_utils import SCRAPER_SOURCE
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class NotifiableJob:
+    """A freshly scored job that qualifies for a job-match notification.
+
+    The score travels alongside the row because it lives in ``job_scores`` (one
+    per CV), not on the job itself — the notification needs the score produced by
+    *this* scan run, which is exactly the pipeline outcome's score.
+
+    Attributes:
+        job: The persisted job row (its ``notified_at`` is stamped on emit).
+        match_score: The 0–100 score this scan computed for the job.
+    """
+
+    job: Any
+    match_score: int
 
 
 async def process_link(
@@ -24,7 +43,7 @@ async def process_link(
     is_first_run: bool,
     notification_threshold: int | None = None,
     is_manual: bool = False,
-) -> tuple[str | None, object | None]:
+) -> tuple[str | None, NotifiableJob | None]:
     """Fetch one job page and run it through the scoring pipeline.
     
     Args:
@@ -42,8 +61,8 @@ async def process_link(
     Returns:
         A ``(kind, notifiable_job)`` tuple. ``kind`` is the pipeline outcome
         string (or ``None`` when the page could not be fetched/extracted).
-        ``notifiable_job`` is the job ORM object when it qualifies for a
-        notification, otherwise ``None``.
+        ``notifiable_job`` is a :class:`NotifiableJob` when the job qualifies for
+        a notification, otherwise ``None``.
     """
     try:
         content = extract_content(await fetch_html(url))
@@ -76,15 +95,17 @@ async def process_link(
 
     # Mark jobs that qualify for notification; the actual emit happens in
     # run_scan after all links are processed so the full batch job_count is known.
-    notifiable_job = None
+    notifiable_job: NotifiableJob | None = None
     if (
         notification_threshold is not None
         and outcome.kind in (KIND_SCORED, KIND_CACHE_HIT)
         and outcome.job is not None
-        and outcome.job.match_score is not None
+        and outcome.score is not None
         and outcome.job.notified_at is None
-        and outcome.job.match_score >= notification_threshold
+        and outcome.score.match_score >= notification_threshold
     ):
-        notifiable_job = outcome.job
+        notifiable_job = NotifiableJob(
+            job=outcome.job, match_score=outcome.score.match_score
+        )
 
     return outcome.kind, notifiable_job

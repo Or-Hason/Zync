@@ -97,8 +97,27 @@ class JobScrapeRequest(BaseModel):
 _DEFAULT_APPLY_METHOD = "Apply via the platform's native button"
 
 
+class JobScoreItem(BaseModel):
+    """One CV's score for a job, as exposed to the UI.
+
+    Sourced from the ``job_scores`` bridging table; ``resume_name`` is the joined
+    ``resumes.version_name`` so the grid can label the CV without a second fetch.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    resume_id: UUID
+    resume_name: str | None = None
+    match_score: int
+
+
 class JobRead(BaseModel):
-    """Full job record returned by the scrape endpoint."""
+    """Full job record returned by the scrape endpoint.
+
+    ``match_score`` / ``scored_by_resume_id`` are *response* fields, not columns:
+    scores live in ``job_scores``, and the endpoint injects the one relevant to
+    the request (the CV just used to score, or the active CV on a detail fetch).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -110,11 +129,11 @@ class JobRead(BaseModel):
     requirements: JobRequirements | None
     source_type: str
     source_url: str | None
-    match_score: int | None
+    match_score: int | None = None
     status: str
     is_duplicate: bool
     duplicate_chance: int | None
-    scored_by_resume_id: UUID | None
+    scored_by_resume_id: UUID | None = None
     published_at: datetime | None
     created_at: datetime
     application_options: list[str] = Field(default_factory=list)
@@ -165,9 +184,11 @@ class JobListItem(BaseModel):
     """Lightweight job projection for the Explorer list view.
 
     Omits heavy text fields (description, raw_content) to keep the list
-    response compact. ``has_cover_letter`` is always ``False`` until the
-    cover-letters feature ships (it requires a separate table join).
-    ``is_unread`` is derived from ``notified_at IS NULL`` (MVP proxy).
+    response compact.
+
+    There is deliberately no flat ``match_score``: a job has one score *per CV*,
+    and which of them to surface is a presentation decision (active CV first, or
+    best match) that the grid makes from :attr:`scores`.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -176,13 +197,10 @@ class JobListItem(BaseModel):
     job_title: str | None
     company_name: str | None
     status: str
-    match_score: int | None
     source_type: str
     created_at: datetime
-    scored_by_resume_id: UUID | None
-    # All resume IDs that have produced a score for this job (canonical + child rescores).
-    # Populated by the list endpoint after querying child rows; not stored on the ORM object.
-    scored_resume_ids: list[UUID] = Field(default_factory=list)
+    # Every CV that has scored this job, newest score data included.
+    scores: list[JobScoreItem] = Field(default_factory=list)
     requirements: JobRequirements | None
     has_cover_letter: bool = False
     # viewed_at is read from the ORM to compute is_unread but not serialised.
