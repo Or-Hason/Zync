@@ -11,8 +11,21 @@
   border: 1px solid var(--color-border);
 }
 
+/*
+ * table-layout: fixed is load-bearing. Under the default `auto` layout a cell's
+ * max-width is only a hint, so one 77-char CV name stretched the whole table
+ * past the scroll container and pushed its badges out of reach. Fixed layout
+ * makes the column widths authoritative and lets the cells clip instead.
+ */
 .table {
   width: 100%;
+  /*
+   * Floor for the whole table. Below this the fixed-content columns (Score,
+   * Source, Status) would squeeze until "100%" and "Manual" were cut, so the
+   * wrapper scrolls horizontally instead of shrinking them any further.
+   */
+  min-width: 760px;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -36,6 +49,8 @@
 
 .thCenter {
   text-align: center;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .thSortable {
@@ -57,15 +72,24 @@
   border-bottom: 1px solid var(--color-border);
   color: var(--color-text);
   vertical-align: middle;
-  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
 }
 
+/*
+ * Centered columns hold self-contained content (a pill, a score, a source tag),
+ * never prose. `text-overflow: clip` because an ellipsis beside a status pill
+ * reads as "there is more text here" when there is not — it is an artifact of
+ * the cell clipping, not a truncated word. Tighter padding buys these narrow
+ * columns a few more pixels for their content.
+ */
 .tdCenter {
   text-align: center;
+  text-overflow: clip;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 
 .row {
@@ -89,11 +113,77 @@
   animation: rowHighlight 3s ease-out forwards;
 }
 
-.cvCellWrap {
+/*
+ * CV Used header: the column title plus its mode control. `min-width: 0` on the
+ * label lets the title ellipsize before the button ever gets squeezed, so the
+ * control stays clickable at the table's minimum width.
+ */
+.cvHeaderWrap {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  max-width: 100%;
+}
+
+.cvHeaderLabel {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cvModeBtn {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  color: var(--color-text-dim);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 16px;
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition),
+    background var(--transition);
+}
+
+.cvModeBtn:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.cvModeBtnOn {
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.cvModeBtn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/*
+ * The cell's own text-overflow cannot reach inside a flex container, so the
+ * name span truncates itself and the badges are pinned at their natural width.
+ * Without this a 77-char CV name pushes the badges past the table's right edge,
+ * where they are unreachable.
+ */
+.cvCellWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.cvName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /*
@@ -103,6 +193,7 @@
  */
 .cvActiveBadge {
   display: inline-block;
+  flex-shrink: 0;
   padding: 1px 6px;
   background: rgba(76, 175, 130, 0.18);
   color: var(--color-success);
@@ -116,6 +207,7 @@
 
 .cvMoreBadge {
   display: inline-block;
+  flex-shrink: 0;
   padding: 1px 5px;
   background: var(--color-accent-muted);
   color: var(--color-accent-hover);
@@ -144,11 +236,15 @@
 /* Status badges */
 .badge {
   display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  vertical-align: middle;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .badgeGreen  { background: rgba(76, 175, 130, 0.18); color: var(--color-success); }

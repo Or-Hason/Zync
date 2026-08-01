@@ -1,6 +1,7 @@
 """Re-scoring path for an already-persisted job (skips Ollama entirely).
 
-Split out of ``job_pipeline.py`` — see ``app/services/job_pipeline.py`` for the re-exported public API.
+Split out of ``job_pipeline.py`` — see that module for the re-exported
+public API.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from app.services.job_pipeline_parts.outcomes import (
     KIND_NO_ACTIVE_RESUME,
     KIND_SCORED,
     PipelineOutcome,
-    _score_details,
+    build_score_details,
 )
 from app.services.job_repository import upsert_job_score
 from app.services.system_advice import LOW_SCORE_THRESHOLD, build_system_advice
@@ -74,7 +75,7 @@ async def rescore_job(
             job_id=job.id,
             resume_id=active_resume.id,
             match_score=score.match_score,
-            score_details=_score_details(score),
+            score_details=build_score_details(score),
         )
         # Only auto-managed statuses follow the score; a user-set status
         # (applied, interviewing, …) is never overwritten by a re-score.

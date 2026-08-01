@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.job import Job
@@ -51,6 +51,34 @@ async def mark_job_read(db: AsyncSession, job_id: UUID) -> None:
     if job is not None and job.viewed_at is None:
         job.viewed_at = datetime.now(timezone.utc)
         await db.flush()
+
+
+async def list_job_facets(db: AsyncSession) -> tuple[list[str], list[str]]:
+    """Return every distinct job title and company name across ALL jobs.
+
+    Deliberately unfiltered. The Explorer's Role and Company autocompletes used
+    to derive their options from the currently displayed rows, which meant that
+    picking a value narrowed the list to that one value — you could never switch
+    to a different one without clearing the box first.
+
+    Args:
+        db: Active async DB session.
+
+    Returns:
+        An ``(roles, companies)`` tuple, each alphabetically sorted, deduplicated
+        case-insensitively, and free of NULL/blank entries.
+    """
+
+    async def _distinct(column) -> list[str]:
+        stmt = (
+            select(func.min(column))
+            .where(column.isnot(None), func.trim(column) != "")
+            .group_by(func.lower(func.trim(column)))
+            .order_by(func.min(column))
+        )
+        return [row[0].strip() for row in (await db.execute(stmt)).all()]
+
+    return await _distinct(Job.job_title), await _distinct(Job.company_name)
 
 
 async def list_job_skills(db: AsyncSession) -> list[str]:

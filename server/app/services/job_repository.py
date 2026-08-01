@@ -18,6 +18,7 @@ from app.services.job_repository_parts.pipeline_reads import (
     load_scored_jobs,
 )
 from app.services.job_repository_parts.read_state import (
+    list_job_facets,
     list_job_skills,
     mark_all_jobs_read,
     mark_job_read,
@@ -41,4 +42,5 @@ __all__ = [
     "mark_all_jobs_read",
     "mark_job_read",
     "list_job_skills",
+    "list_job_facets",
 ]

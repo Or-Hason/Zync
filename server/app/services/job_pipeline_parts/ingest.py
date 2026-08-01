@@ -1,6 +1,7 @@
 """Core ingestion path: extract -> classify -> dedupe -> cache -> blacklist -> score.
 
-Split out of ``job_pipeline.py`` — see ``app/services/job_pipeline.py`` for the re-exported public API.
+Split out of ``job_pipeline.py`` — see that module for the re-exported
+public API.
 
 PII / privacy rule: this module logs nothing containing raw job text or resume
 PII — callers log only ``job_id`` and ``source_type``.
@@ -29,7 +30,7 @@ from app.services.job_pipeline_parts.outcomes import (
     KIND_OLLAMA_PARSE_FAILURE,
     KIND_SCORED,
     PipelineOutcome,
-    _score_details,
+    build_score_details,
 )
 from app.services.job_repository import (
     load_existing_jobs,
@@ -218,7 +219,7 @@ async def run_job_pipeline(
                 job_id=job.id,
                 resume_id=active_resume.id,
                 match_score=score.match_score,
-                score_details=_score_details(score),
+                score_details=build_score_details(score),
             )
         )
         await db.flush()
@@ -279,7 +280,7 @@ async def _handle_cache_hit(
             job_id=job.id,
             resume_id=active_resume_id,
             match_score=cached.match_score,
-            score_details=_score_details(cached),
+            score_details=build_score_details(cached),
         )
     )
     await db.flush()

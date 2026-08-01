@@ -97,6 +97,17 @@ class JobScrapeRequest(BaseModel):
 _DEFAULT_APPLY_METHOD = "Apply via the platform's native button"
 
 
+class JobFacets(BaseModel):
+    """Autocomplete option catalogues for the Explorer's Role/Company filters.
+
+    Drawn from every job in the DB, never from the currently filtered rows —
+    otherwise selecting a value would collapse the option list to that value.
+    """
+
+    roles: list[str] = Field(default_factory=list)
+    companies: list[str] = Field(default_factory=list)
+
+
 class JobScoreItem(BaseModel):
     """One CV's score for a job, as exposed to the UI.
 

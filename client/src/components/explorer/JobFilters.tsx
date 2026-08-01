@@ -1,13 +1,13 @@
 import { useResumes, useActiveResume } from "@/api/resumeApi";
+import { useJobFacets } from "@/api/jobsApi";
 import { en } from "@/i18n/en";
-import type { JobFiltersParams, JobListItem } from "@/types/job";
+import type { JobFiltersParams } from "@/types/job";
 import styles from "./JobFilters.module.css";
 
 const f = en.pages.explorer.filters;
 
 interface Props {
   filters: JobFiltersParams;
-  jobs: JobListItem[];
   search: string;
   onSearchChange: (v: string) => void;
   onChange: (patch: Partial<JobFiltersParams>) => void;
@@ -20,21 +20,54 @@ interface Props {
  * Receives the debounced search value separately (`search` / `onSearchChange`)
  * so the input stays responsive while the API query waits for the debounce.
  */
-export function JobFilters({ filters, jobs, search, onSearchChange, onChange, onClear }: Props): React.JSX.Element {
+export function JobFilters({ filters, search, onSearchChange, onChange, onClear }: Props): React.JSX.Element {
   const { data: resumes = [] } = useResumes();
   const { data: activeResume } = useActiveResume();
+  /*
+   * Options come from the facets endpoint (every job in the DB), NOT from the
+   * currently displayed rows. Deriving them from the filtered list meant that
+   * choosing a Role left that Role as the only option until the box was cleared.
+   */
+  const { data: facets } = useJobFacets();
 
   /** Unique role options: active CV target role pinned first (deduped). */
   const pinnedRole = activeResume?.target_role ?? null;
-  const allRoles = Array.from(new Set(jobs.map((j) => j.job_title).filter(Boolean) as string[])).sort();
+  const allRoles = facets?.roles ?? [];
   const roleOptions = pinnedRole
     ? [pinnedRole, ...allRoles.filter((r) => r.toLowerCase() !== pinnedRole.toLowerCase())]
     : allRoles;
 
-  /** Unique company suggestions derived from current job list. */
-  const companyOptions = Array.from(
-    new Set(jobs.map((j) => j.company_name).filter(Boolean) as string[])
-  ).sort();
+  const companyOptions = facets?.companies ?? [];
+
+  /**
+   * Close the native datalist popup after an option is picked.
+   *
+   * Selecting from a datalist fires `input` with `inputType`
+   * "insertReplacementText" — the one signal that distinguishes a pick from
+   * ordinary typing. Without blurring, the popup lingers over the page showing
+   * the single option that still matches the now-complete value.
+   */
+  function handleAutocompletePick(e: React.InputEvent<HTMLInputElement>): void {
+    if (e.nativeEvent.inputType === "insertReplacementText") {
+      e.currentTarget.blur();
+    }
+  }
+
+  /**
+   * Select the whole value when an autocomplete regains focus.
+   *
+   * A `<datalist>` popup only offers options that substring-match the input's
+   * current value, so once a full option is chosen it is the only suggestion
+   * left. Pre-selecting the text means one keystroke replaces it and the full
+   * list comes back, instead of forcing the user to clear the box by hand.
+   *
+   * Deferred a frame on purpose: the browser positions the caret *after* the
+   * focus handler returns, so selecting synchronously here is immediately undone.
+   */
+  function handleAutocompleteFocus(e: React.FocusEvent<HTMLInputElement>): void {
+    const input = e.currentTarget;
+    requestAnimationFrame(() => input.select());
+  }
 
   const hasActiveFilters =
     !!filters.date_from ||
@@ -112,6 +145,8 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
           list="role-options"
           value={filters.role ?? ""}
           onChange={(e): void => onChange({ role: e.target.value || undefined })}
+          onInput={handleAutocompletePick}
+          onFocus={handleAutocompleteFocus}
           aria-label={f.roleLabel}
         />
         <datalist id="role-options">
@@ -132,6 +167,8 @@ export function JobFilters({ filters, jobs, search, onSearchChange, onChange, on
           list="company-options"
           value={filters.company ?? ""}
           onChange={(e): void => onChange({ company: e.target.value || undefined })}
+          onInput={handleAutocompletePick}
+          onFocus={handleAutocompleteFocus}
           aria-label={f.companyLabel}
         />
         <datalist id="company-options">

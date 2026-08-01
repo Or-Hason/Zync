@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useReactTable,
@@ -10,7 +10,8 @@ import {
   type Row,
 } from "@tanstack/react-table";
 import { en } from "@/i18n/en";
-import type { JobListItem } from "@/types/job";
+import type { JobListItem, JobRow } from "@/types/job";
+import { selectPrimaryScore } from "./scoreSelection";
 import { useJobTableColumns } from "./useJobTableColumns";
 import { getDateGroup, isLeftAligned, ONE_DAY_MS, readViewedJobs } from "./jobTableHelpers";
 import styles from "./JobTable.module.css";
@@ -19,7 +20,7 @@ const t = en.pages.explorer.table;
 
 type RowEntry =
   | { kind: "sep"; label: string }
-  | { kind: "data"; row: Row<JobListItem> };
+  | { kind: "data"; row: Row<JobRow> };
 
 interface Props {
   jobs: JobListItem[];
@@ -30,15 +31,21 @@ interface Props {
   activeResumeId: string | null;
   /** When true, ignore the Active Resume and always show the top-scoring CV. */
   showBestMatch: boolean;
+  /** Toggles the mode; the control lives in the CV Used column header. */
+  onShowBestMatchChange: (value: boolean) => void;
 }
 
 /**
  * The Explorer data grid.
  *
- * `CV Used` and `Score` are derived columns: both read the same
- * `selectPrimaryScore` result, so the score shown always belongs to the CV named
- * beside it. Changing the Active Resume re-runs that selection (it is a column
- * dependency), which is what re-renders the grid without a refetch.
+ * `CV Used` and `Score` both read one `primaryScore` resolved per job below, so
+ * the score shown always belongs to the CV named beside it.
+ *
+ * That resolution deliberately happens in the table `data`, not in a column
+ * accessor: TanStack caches accessor results in `row._valuesCache` keyed only by
+ * column id, so an accessor closing over `activeResumeId` keeps returning the
+ * first value it ever computed. Rebuilding `data` changes its identity, which
+ * invalidates the row model — and with it both the cell values and the sort order.
  */
 export function JobTable({
   jobs,
@@ -47,6 +54,7 @@ export function JobTable({
   targetRole,
   activeResumeId,
   showBestMatch,
+  onShowBestMatchChange,
 }: Props): React.JSX.Element {
   const navigate = useNavigate();
 
@@ -56,10 +64,29 @@ export function JobTable({
    */
   const animatedRef = useRef<Set<string>>(readViewedJobs());
 
-  const columns = useJobTableColumns({ targetRole, activeResumeId, showBestMatch });
+  /**
+   * Resolve which CV represents each job, for the CV Used and Score columns.
+   * Recomputed whenever the active resume or the Best Match override changes so
+   * the grid reflects the new priority without a refetch.
+   */
+  const data = useMemo<JobRow[]>(
+    () =>
+      jobs.map((job) => ({
+        ...job,
+        primaryScore: selectPrimaryScore(job.scores, activeResumeId, showBestMatch),
+      })),
+    [jobs, activeResumeId, showBestMatch],
+  );
+
+  const columns = useJobTableColumns({
+    targetRole,
+    activeResumeId,
+    showBestMatch,
+    onShowBestMatchChange,
+  });
 
   const table = useReactTable({
-    data: jobs,
+    data,
     columns,
     state: { sorting },
     onSortingChange,
@@ -68,10 +95,13 @@ export function JobTable({
     enableMultiSort: true,
   });
 
-  function handleHeaderClick(column: Column<JobListItem>, e: React.MouseEvent): void {
+  function handleHeaderClick(column: Column<JobRow>, e: React.MouseEvent): void {
     if (!column.getCanSort()) return;
     column.toggleSorting(undefined, e.shiftKey);
   }
+
+  /** Sum of the column size ratios, used to turn each into a percentage width. */
+  const totalSize = table.getTotalSize();
 
   const isPrimaryDateDesc = sorting[0]?.id === "created_at" && sorting[0]?.desc === true;
 
@@ -114,6 +144,11 @@ export function JobTable({
               return (
                 <th
                   key={header.id}
+                  // Percentages, not the raw `size` px: under table-layout: fixed
+                  // an over-budget px total makes the table wider than its
+                  // container, reintroducing the horizontal overflow. Ratios of
+                  // the total always add up to the available width.
+                  style={{ width: `${(header.getSize() / totalSize) * 100}%` }}
                   className={`${styles.th} ${left ? "" : styles.thCenter} ${col.getCanSort() ? styles.thSortable : ""}`}
                   onClick={(e): void => handleHeaderClick(col, e)}
                   aria-sort={isSorted === "asc" ? "ascending" : isSorted === "desc" ? "descending" : "none"}

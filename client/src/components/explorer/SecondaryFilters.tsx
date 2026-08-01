@@ -15,7 +15,11 @@ interface Props {
  * Secondary (collapsible) filter row: skills pills, experience, boolean toggles.
  * The full skill list is fetched once on mount and filtered client-side on input.
  */
-export function SecondaryFilters({ filters, allSkills, onChange }: Props): React.JSX.Element {
+export function SecondaryFilters({
+  filters,
+  allSkills,
+  onChange,
+}: Props): React.JSX.Element {
   const [skillInput, setSkillInput] = useState("");
 
   const selectedSkills = filters.skills ?? [];
@@ -107,7 +111,7 @@ export function SecondaryFilters({ filters, allSkills, onChange }: Props): React
         />
       </div>
 
-      {/* Boolean toggles */}
+      {/* Boolean toggles — two stacked pairs, read column by column. */}
       <div className={styles.toggles}>
         <Toggle
           label={f.isNewLabel}
@@ -150,18 +154,21 @@ function Toggle({
   label,
   checked,
   onChange,
+  title,
 }: {
   label: string;
   checked: boolean;
   onChange: (v: boolean) => void;
+  title?: string;
 }): React.JSX.Element {
   return (
-    <label className={styles.toggle}>
+    <label className={styles.toggle} title={title}>
       <input
         type="checkbox"
         className={styles.toggleInput}
         checked={checked}
         onChange={(e): void => onChange(e.target.checked)}
+        aria-label={label}
       />
       <span className={styles.toggleTrack} aria-hidden="true">
         <span className={styles.toggleThumb} />

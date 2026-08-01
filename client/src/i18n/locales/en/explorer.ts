@@ -8,9 +8,13 @@ export const explorer = {
   noResults: "No jobs match the current filters.",
   loading: "Loading jobs…",
   shiftClickTooltip: "Shift+Click a column to add a secondary sort",
-  showBestMatch: "Show Best Match",
+  showBestMatch: "Best CV match",
   showBestMatchTooltip:
     "Ignore your active CV and show the highest-scoring CV for every job",
+  filtersToggle: "Filters",
+  filtersShow: "Show filters",
+  filtersHide: "Hide filters",
+  filtersActiveAriaLabel: "filters currently active",
   filters: {
     freeSearchLabel: "Free Search",
     search: "Search jobs…",
@@ -46,6 +50,13 @@ export const explorer = {
     columnDate: "Date Added",
     columnSource: "Source",
     columnCv: "CV Used",
+    cvModeActive: "Active First",
+    cvModeBest: "Best First",
+    cvModeActiveTooltip:
+      "Showing your active CV's score first. Click to show each job's best-scoring CV instead.",
+    cvModeBestTooltip:
+      "Showing each job's best-scoring CV. Click to go back to prioritize your active CV.",
+    cvModeAriaLabel: "Which CV the Score column reflects",
     cvActiveBadge: "Active",
     cvActiveTooltip: "This is your currently active CV",
     cvOtherScoresAriaLabel: "other CVs have also scored this job",

@@ -5,6 +5,8 @@ export const app = {
 } as const;
 
 export const nav = {
+  collapse: "Collapse menu",
+  expand: "Expand menu",
   dashboard: "Dashboard",
   explorer: "Job Explorer",
   addJob: "Add Job",

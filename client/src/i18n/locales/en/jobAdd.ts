@@ -9,6 +9,8 @@ export const jobAdd = {
     noResumeTooltip: "Upload an active resume to enable scanning",
     errorConflict: "A scan is already in progress.",
     errorNoResume: "Upload an active resume to scan.",
+    thresholdLabel: "Required Scan Score",
+    thresholdTitle: "Notification Score Threshold (0-100)",
   },
   entryForm: {
     tabUrl: "Job URL",
@@ -95,8 +97,8 @@ export const jobAdd = {
     fetchFailed: "Could not fetch that URL. Try pasting the job text instead.",
   },
   activeResumeSelector: {
-    label: "Active Resume:",
+    label: "Active CV",
     noResume: "None selected",
-    selectAriaLabel: "Select active resume",
+    selectAriaLabel: "Select active CV",
   },
 } as const;

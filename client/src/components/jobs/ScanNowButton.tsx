@@ -37,7 +37,7 @@ export function ScanNowButton(): React.JSX.Element {
       <div className={styles.controlsRow}>
         <div className={styles.thresholdWrap}>
           <label htmlFor="manual-scan-threshold" className={styles.thresholdLabel}>
-            Required Scan Score:
+            {s.thresholdLabel}
           </label>
           <input
             id="manual-scan-threshold"
@@ -47,7 +47,7 @@ export function ScanNowButton(): React.JSX.Element {
             value={threshold}
             onChange={(e) => setThreshold(e.target.value)}
             className={styles.thresholdInput}
-            title="Notification Score Threshold (0-100)"
+            title={s.thresholdTitle}
           />
         </div>
         <button

@@ -55,6 +55,20 @@ export interface JobListItem {
   is_unread: boolean;
 }
 
+/**
+ * A job row as fed to the Explorer grid.
+ *
+ * `primaryScore` is resolved once per render pass from the active resume and the
+ * "Show Best Match" toggle. It lives on the row rather than being computed
+ * inside a column accessor because TanStack memoises accessor results in
+ * `row._valuesCache` and never invalidates them when the accessor changes —
+ * recomputing here changes the `data` identity, which is what rebuilds the row
+ * model (and therefore the sort order too).
+ */
+export interface JobRow extends JobListItem {
+  primaryScore: JobScoreEntry | null;
+}
+
 export interface JobFiltersParams {
   q?: string;
   date_from?: string;

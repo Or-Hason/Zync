@@ -34,7 +34,7 @@ export function JobEntryForm({ onSubmit, isLoading }: JobEntryFormProps): React.
     setError("");
   }
 
-  function handleSubmit(e: React.FormEvent): void {
+  function handleSubmit(e: React.SubmitEvent<HTMLFormElement>): void {
     e.preventDefault();
     setError("");
 

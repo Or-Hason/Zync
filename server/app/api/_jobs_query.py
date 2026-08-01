@@ -12,8 +12,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
-from app.schemas.job import JobListItem
-from app.services.job_repository import list_job_skills, list_jobs
+from app.schemas.job import JobFacets, JobListItem
+from app.services.job_repository import list_job_facets, list_job_skills, list_jobs
 from app.services.score_selection import to_score_items
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -101,6 +101,23 @@ async def list_jobs_endpoint(
 
     logger.info("Jobs listed", extra={"count": len(items)})
     return items
+
+
+@router.get(
+    "/facets",
+    response_model=JobFacets,
+    summary="All distinct roles and companies (for the Explorer autocompletes)",
+)
+async def get_job_facets(
+    db: AsyncSession = Depends(get_db),
+) -> JobFacets:
+    """Return the full Role and Company option catalogues.
+
+    Unfiltered by design: these back the Explorer's autocomplete inputs, which
+    must keep offering every value even while a filter is applied.
+    """
+    roles, companies = await list_job_facets(db)
+    return JobFacets(roles=roles, companies=companies)
 
 
 @router.get(

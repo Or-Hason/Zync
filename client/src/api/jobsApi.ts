@@ -9,7 +9,14 @@ const BASE = "/api/jobs";
 export const JOBS_KEYS = {
   list: (params: JobFiltersParams) => ["jobs", "list", params] as const,
   skills: ["jobs", "skills"] as const,
+  facets: ["jobs", "facets"] as const,
 };
+
+/** Full Role/Company option catalogues for the Explorer autocompletes. */
+export interface JobFacets {
+  roles: string[];
+  companies: string[];
+}
 
 export interface ScrapeRequest {
   url?: string;
@@ -185,6 +192,27 @@ export function useMarkAllJobsRead(): ReturnType<typeof useMutation<void, Error,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
     },
+  });
+}
+
+async function fetchJobFacets(): Promise<JobFacets> {
+  const res = await fetch(`${BASE}/facets`);
+  if (!res.ok) throw new Error("Failed to fetch job facets");
+  return res.json() as Promise<JobFacets>;
+}
+
+/**
+ * Fetch every distinct role and company across all jobs.
+ *
+ * Separate from `useJobs` on purpose: the autocomplete options must NOT shrink
+ * to the currently filtered rows, otherwise picking a Role leaves that Role as
+ * the only selectable option.
+ */
+export function useJobFacets(): ReturnType<typeof useQuery<JobFacets>> {
+  return useQuery<JobFacets>({
+    queryKey: JOBS_KEYS.facets,
+    queryFn: fetchJobFacets,
+    staleTime: SKILLS_STALE_MS,
   });
 }
 

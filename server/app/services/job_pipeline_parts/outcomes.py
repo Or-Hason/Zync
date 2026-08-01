@@ -1,6 +1,7 @@
 """Shared outcome type, kind constants, and score-projection helper.
 
-Split out of ``job_pipeline.py`` — see ``app/services/job_pipeline.py`` for the re-exported public API.
+Split out of ``job_pipeline.py`` — see that module for the re-exported
+public API.
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ class PipelineOutcome:
     scored_by_resume_id: UUID | None = None
 
 
-def _score_details(score: ScoreResult) -> dict:
+def build_score_details(score: ScoreResult) -> dict:
     """Project a :class:`ScoreResult` into the ``score_details`` JSONB shape.
 
     Args:
