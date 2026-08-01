@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.scraper import jobmaster
+from app.scraper import jobmaster, jobmaster_process
 from app.scraper.jobmaster import (
     apply_scan_caps,
     build_search_url,
@@ -164,12 +164,32 @@ def _resume(target_role: str | None = "Backend") -> Any:
 
 
 def _patch_fetch_and_extract(monkeypatch: pytest.MonkeyPatch, search_html: str) -> None:
+    """Stub page fetching across both scraper modules.
+
+    ``jobmaster`` fetches the search listing; ``jobmaster_process`` fetches and
+    extracts each individual job page. Both need the stub — patching only
+    ``jobmaster`` leaves the real network call in the per-job path.
+    """
+
     async def _fake_fetch(url: str) -> str:
         # The search URL returns the listing; job pages return placeholder text.
         return search_html if "/jobs/?q=" in url else "job page text"
 
     monkeypatch.setattr(jobmaster, "fetch_html", _fake_fetch)
-    monkeypatch.setattr(jobmaster, "extract_content", lambda html: html)
+    monkeypatch.setattr(jobmaster_process, "fetch_html", _fake_fetch)
+    monkeypatch.setattr(jobmaster_process, "extract_content", lambda html: html)
+
+
+def _patch_pipeline(
+    monkeypatch: pytest.MonkeyPatch, recorder: "_PipelineRecorder"
+) -> None:
+    """Point run_job_pipeline at the recorder in the module that calls it.
+
+    ``run_scan`` delegates per-link work to ``jobmaster_process.process_link``,
+    which is where ``run_job_pipeline`` is resolved — ``jobmaster`` itself never
+    imports it.
+    """
+    monkeypatch.setattr(jobmaster_process, "run_job_pipeline", recorder)
 
 
 class _PipelineRecorder:
@@ -195,7 +215,7 @@ class TestRunScan:
     ) -> None:
         session = FakeScanSession(active_resumes=[], known_urls=[], source_count=0)
         recorder = _PipelineRecorder()
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
+        _patch_pipeline(monkeypatch, recorder)
 
         report = await run_scan(
             db=session, ollama=None, gemini=None, store=None,
@@ -211,7 +231,7 @@ class TestRunScan:
             active_resumes=[_resume(target_role=None)], known_urls=[], source_count=0
         )
         recorder = _PipelineRecorder()
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
+        _patch_pipeline(monkeypatch, recorder)
 
         report = await run_scan(
             db=session, ollama=None, gemini=None, store=None,
@@ -228,7 +248,7 @@ class TestRunScan:
         )
         _patch_fetch_and_extract(monkeypatch, html)
         recorder = _PipelineRecorder()
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
+        _patch_pipeline(monkeypatch, recorder)
 
         session = FakeScanSession(
             active_resumes=[_resume("Backend")], known_urls=[], source_count=0
@@ -257,7 +277,7 @@ class TestRunScan:
         )
         _patch_fetch_and_extract(monkeypatch, html)
         recorder = _PipelineRecorder()
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
+        _patch_pipeline(monkeypatch, recorder)
 
         known = ["https://www.jobmaster.co.il/jobs/checknum.asp?key=1"]
         session = FakeScanSession(
@@ -280,7 +300,7 @@ class TestRunScan:
         _patch_fetch_and_extract(monkeypatch, html)
         # Second job reports all models rate-limited -> scan must stop.
         recorder = _PipelineRecorder(kinds=[KIND_SCORED, KIND_GEMINI_UNAVAILABLE])
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", recorder)
+        _patch_pipeline(monkeypatch, recorder)
 
         session = FakeScanSession(
             active_resumes=[_resume("Backend")], known_urls=[], source_count=5

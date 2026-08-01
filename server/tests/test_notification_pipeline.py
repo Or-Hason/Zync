@@ -10,7 +10,7 @@ from uuid import uuid4
 
 import pytest
 
-from app.scraper import jobmaster
+from app.scraper import jobmaster, jobmaster_process
 from app.scraper.jobmaster import run_scan
 from app.services import notification_bus
 from app.schemas.job import ScoreResult
@@ -156,8 +156,11 @@ def _patch_html(monkeypatch: pytest.MonkeyPatch, n_links: int = 1) -> None:
     async def _fetch(url: str) -> str:
         return html if "/jobs/?q=" in url else "job text"
 
+    # jobmaster fetches the search listing; jobmaster_process fetches and
+    # extracts each job page. Both need stubbing.
     monkeypatch.setattr(jobmaster, "fetch_html", _fetch)
-    monkeypatch.setattr(jobmaster, "extract_content", lambda h: h)
+    monkeypatch.setattr(jobmaster_process, "fetch_html", _fetch)
+    monkeypatch.setattr(jobmaster_process, "extract_content", lambda h: h)
 
 
 @pytest.mark.asyncio
@@ -187,7 +190,7 @@ class TestRunScanNotificationHook:
         async def _pipeline(**kw: Any) -> PipelineOutcome:
             return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -221,7 +224,7 @@ class TestRunScanNotificationHook:
         async def _pipeline(**kw: Any) -> PipelineOutcome:
             return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -255,7 +258,7 @@ class TestRunScanNotificationHook:
         async def _pipeline(**kw: Any) -> PipelineOutcome:
             return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -286,7 +289,7 @@ class TestRunScanNotificationHook:
         async def _pipeline(**kw: Any) -> PipelineOutcome:
             return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )

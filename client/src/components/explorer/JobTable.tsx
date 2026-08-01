@@ -1,84 +1,25 @@
-import { useMemo, useRef } from "react";
+import { useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
   flexRender,
-  createColumnHelper,
   type SortingState,
   type Column,
   type Row,
 } from "@tanstack/react-table";
 import { en } from "@/i18n/en";
 import type { JobListItem } from "@/types/job";
-import { buildScoreTooltip, selectPrimaryScore } from "./scoreSelection";
+import { useJobTableColumns } from "./useJobTableColumns";
+import { getDateGroup, isLeftAligned, ONE_DAY_MS, readViewedJobs } from "./jobTableHelpers";
 import styles from "./JobTable.module.css";
 
 const t = en.pages.explorer.table;
 
-/** Status sort order: advanced stages first, rejections last. */
-const STATUS_ORDER: Record<string, number> = {
-  accepted: 0,
-  hr_interview: 1,
-  professional_interview: 2,
-  home_test: 3,
-  assessment_task: 4,
-  applied: 5,
-  not_applied: 6,
-  auto_rejected: 7,
-  hr_interview_rejected: 8,
-  professional_interview_rejected: 9,
-  home_test_rejected: 10,
-  assessment_rejected: 11,
-  user_rejected: 12,
-};
-
-/** Date group thresholds (ascending days from now). */
-const DATE_GROUPS = [
-  { label: t.dateGroupToday, maxDays: 1 },
-  { label: t.dateGroupLastWeek, maxDays: 7 },
-  { label: t.dateGroupLastMonth, maxDays: 30 },
-  { label: t.dateGroupLastYear, maxDays: 365 },
-  { label: t.dateGroupOlder, maxDays: Infinity },
-] as const;
-
-function getDateGroup(createdAt: string, now: number): string {
-  const diffDays = (now - new Date(createdAt).getTime()) / 86_400_000;
-  for (const g of DATE_GROUPS) {
-    if (diffDays < g.maxDays) return g.label;
-  }
-  return t.dateGroupOlder;
-}
-
-/** Status category → CSS class for coloured badge. */
-function statusClass(status: string): string {
-  if (status === "accepted") return styles.badgeGreen;
-  if (status === "not_applied") return styles.badgeYellow;
-  if (status.endsWith("_rejected") || status === "auto_rejected") return styles.badgeRed;
-  return styles.badgeBlue;
-}
-
-/** Columns that stay left-aligned (all others are centered). */
-function isLeftAligned(colId: string): boolean {
-  return colId === "job_title" || colId === "cv_used";
-}
-
-const ONE_DAY_MS = 86_400_000;
-const columnHelper = createColumnHelper<JobListItem>();
-
 type RowEntry =
   | { kind: "sep"; label: string }
   | { kind: "data"; row: Row<JobListItem> };
-
-function readViewedJobs(): Set<string> {
-  try {
-    const raw = sessionStorage.getItem("zync_viewed_jobs");
-    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
-  } catch {
-    return new Set<string>();
-  }
-}
 
 interface Props {
   jobs: JobListItem[];
@@ -115,119 +56,7 @@ export function JobTable({
    */
   const animatedRef = useRef<Set<string>>(readViewedJobs());
 
-  const columns = useMemo(() => [
-    columnHelper.accessor("job_title", {
-      header: t.columnRole,
-      sortingFn: (rowA, rowB) => {
-        const a = (rowA.original.job_title ?? "").toLowerCase().trim();
-        const b = (rowB.original.job_title ?? "").toLowerCase().trim();
-        const target = targetRole?.toLowerCase().trim() ?? "";
-        if (target) {
-          if (a === target && b !== target) return -1;
-          if (a !== target && b === target) return 1;
-        }
-        return a < b ? -1 : a > b ? 1 : 0;
-      },
-      cell: (info) => (
-        <span className={styles.roleCellWrap}>
-          {info.row.original.is_unread && (
-            <span className={styles.unreadDot} aria-label="Unread" title="Unread" />
-          )}
-          {info.getValue() ?? "—"}
-        </span>
-      ),
-    }),
-    columnHelper.accessor("company_name", {
-      header: t.columnCompany,
-      cell: (info) => info.getValue() ?? "—",
-    }),
-    columnHelper.accessor("status", {
-      header: t.columnStatus,
-      sortingFn: (rowA, rowB) =>
-        (STATUS_ORDER[rowA.original.status] ?? 999) - (STATUS_ORDER[rowB.original.status] ?? 999),
-      cell: (info) => {
-        const s = info.getValue();
-        return (
-          <span className={`${styles.badge} ${statusClass(s)}`}>
-            {t.statusLabels[s] ?? s}
-          </span>
-        );
-      },
-    }),
-    // Derived, not stored: the score of whichever CV the CV Used column shows.
-    columnHelper.accessor(
-      (row) => selectPrimaryScore(row.scores, activeResumeId, showBestMatch)?.match_score ?? null,
-      {
-        id: "match_score",
-        header: t.columnScore,
-        // Unscored jobs sort as -1 so they sink to the bottom on the default
-        // (descending) score sort rather than landing between real scores.
-        sortingFn: (rowA, rowB, colId) =>
-          ((rowA.getValue(colId) as number | null) ?? -1) -
-          ((rowB.getValue(colId) as number | null) ?? -1),
-        cell: (info) => {
-          const v = info.getValue();
-          return v !== null
-            ? <span className={styles.score}>{v}%</span>
-            : <span className={styles.dim}>—</span>;
-        },
-      },
-    ),
-    columnHelper.accessor("created_at", {
-      header: t.columnDate,
-      cell: (info) =>
-        new Date(info.getValue()).toLocaleDateString(undefined, {
-          year: "numeric",
-          month: "short",
-          day: "numeric",
-        }),
-    }),
-    columnHelper.accessor("source_type", {
-      header: t.columnSource,
-      cell: (info) =>
-        info.getValue() === "manual"
-          ? <span className={styles.tagManual}>{t.sourceManual}</span>
-          : <span className={styles.tagAuto}>{t.sourceAuto}</span>,
-    }),
-    columnHelper.display({
-      id: "cv_used",
-      header: t.columnCv,
-      cell: ({ row }) => {
-        const { scores } = row.original;
-        const primary = selectPrimaryScore(scores, activeResumeId, showBestMatch);
-        if (primary === null) return <span className={styles.dim}>—</span>;
-
-        const isActive = primary.resume_id === activeResumeId;
-        const others = scores.length - 1;
-        const tooltip = others > 0
-          ? buildScoreTooltip(scores, activeResumeId, t.cvActiveBadge)
-          : undefined;
-
-        return (
-          <span
-            className={styles.cvCellWrap}
-            title={tooltip}
-            style={others > 0 ? { cursor: "help" } : undefined}
-          >
-            <span className={styles.dim}>{primary.resume_name ?? "—"}</span>
-            {isActive && (
-              <span className={styles.cvActiveBadge} title={t.cvActiveTooltip}>
-                {t.cvActiveBadge}
-              </span>
-            )}
-            {others > 0 && (
-              <span
-                className={styles.cvMoreBadge}
-                aria-label={`${others} ${t.cvOtherScoresAriaLabel}`}
-              >
-                +{others}
-              </span>
-            )}
-          </span>
-        );
-      },
-    }),
-  ], [activeResumeId, showBestMatch, targetRole]);
+  const columns = useJobTableColumns({ targetRole, activeResumeId, showBestMatch });
 
   const table = useReactTable({
     data: jobs,

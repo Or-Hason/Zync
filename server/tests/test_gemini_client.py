@@ -168,7 +168,7 @@ class TestModelFallback:
         client = self._client()
         calls: list[str] = []
 
-        def _generate(_prompt: str, model: str) -> str:
+        def _generate(_prompt: str, model: str, _system: str | None = None) -> str:
             calls.append(model)
             if model == "model-a":
                 raise _rate_limit_error()
@@ -223,7 +223,7 @@ class TestModelFallback:
         calls: list[str] = []
         slept: list[float] = []
 
-        def _generate(_prompt: str, model: str) -> str:
+        def _generate(_prompt: str, model: str, _system: str | None = None) -> str:
             calls.append(model)
             if model == "model-a":
                 raise _burst_error()
@@ -251,7 +251,7 @@ class TestModelFallback:
         _gc_module.last_rotated_at = datetime.now(timezone.utc) - timedelta(hours=1, seconds=1)
 
         monkeypatch.setattr(
-            client, "_generate", lambda _prompt, model: '{"match_score": 50}'
+            client, "_generate", lambda _prompt, model, _system=None: '{"match_score": 50}'
         )
         client._generate_with_fallback("prompt")
 
