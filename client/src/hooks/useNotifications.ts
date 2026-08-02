@@ -23,6 +23,7 @@ import {
   playInAppNotificationSound,
   setupTauriNotifications,
 } from "@/services/notifications";
+import { API_BASE } from "@/api/apiBase";
 
 const s = en.notifications;
 
@@ -48,7 +49,7 @@ export interface JobMatchToastState {
   duration: number;
 }
 
-const SSE_URL = "/api/notifications/stream";
+const SSE_URL = `${API_BASE}/api/notifications/stream`;
 const EXPLORER_PATH = "/explorer";
 const AUTO_DISMISS_MS = 8_000;
 const TEST_EVENT_NAME = "test_job_match";

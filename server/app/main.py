@@ -47,9 +47,27 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Origins allowed to call the API from a browser context.
+#
+# The first two are the Vite dev servers (Tauri dev window / plain browser).
+# The last two are the packaged desktop app: the bundled WebView serves the
+# frontend from its own scheme, so every call to 127.0.0.1:8000 is cross-origin
+# and is blocked outright without these. Windows (WebView2) reports
+# `http://tauri.localhost`; macOS and Linux (WKWebView / WebKitGTK) report
+# `tauri://localhost`. Both are listed so one build works on every platform.
+#
+# Loopback only, by design: the API is unauthenticated and serves resume PII,
+# so no remote origin may ever be added here.
+ALLOWED_ORIGINS = [
+    "http://localhost:1420",
+    "http://localhost:5173",
+    "http://tauri.localhost",
+    "tauri://localhost",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:1420", "http://localhost:5173"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

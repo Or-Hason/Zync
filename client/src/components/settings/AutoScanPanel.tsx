@@ -7,6 +7,7 @@ import {
 } from "@/api/settingsApi";
 import type { ScanFrequencyHours, ScanSettings } from "@/api/settingsApi";
 import { useActiveResume } from "@/api/resumeApi";
+import { API_BASE } from "@/api/apiBase";
 import { DISMISSED_KEY } from "@/components/NotificationCTA";
 import { Toast } from "@/components/resume/Toast";
 import { dispatchTestNotification } from "@/hooks/useNotifications";
@@ -151,7 +152,7 @@ export function AutoScanPanel(): React.JSX.Element {
 
   async function handleBackendMock(): Promise<void> {
     try {
-      const res = await fetch("/api/notifications/mock-backend-scan", { method: "POST" });
+      const res = await fetch(`${API_BASE}/api/notifications/mock-backend-scan`, { method: "POST" });
       if (!res.ok) {
         console.error("[AutoScanPanel] Backend mock failed:", res.status, res.statusText);
       } else {

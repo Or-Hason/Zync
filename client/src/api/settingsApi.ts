@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { API_BASE } from "@/api/apiBase";
 
 export type BypassPreference = "ask" | "always" | "never";
 
@@ -37,7 +38,7 @@ export interface NotificationSettings {
   immediate_job_threshold: number | null;
 }
 
-const BASE = "/api/settings";
+const BASE = `${API_BASE}/api/settings`;
 
 async function fetchBlacklist(): Promise<string[]> {
   const res = await fetch(`${BASE}/blacklist`);

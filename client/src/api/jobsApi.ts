@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { JobFiltersParams, JobListItem, JobScrapeResponse } from "@/types/job";
+import { API_BASE } from "@/api/apiBase";
 
 const JOB_DETAIL_STALE_MS = 5 * 60 * 1000; // 5 min — serves notification deep-links from cache
 const SKILLS_STALE_MS = 5 * 60 * 1000; // skills change rarely
 
-const BASE = "/api/jobs";
+const BASE = `${API_BASE}/api/jobs`;
 
 export const JOBS_KEYS = {
   list: (params: JobFiltersParams) => ["jobs", "list", params] as const,

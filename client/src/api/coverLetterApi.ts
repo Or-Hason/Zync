@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { API_BASE } from "@/api/apiBase";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -19,7 +20,7 @@ export interface LetterTemplate {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const BASE = "/api";
+const BASE = `${API_BASE}/api`;
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
