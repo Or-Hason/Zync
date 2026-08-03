@@ -19,6 +19,13 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Drives the clickable toast in `src/notification.rs`. Not an added weight: the
+# notification plugin already pulls this in transitively via notify-rust; we
+# depend on it directly only to reach `Toast::on_activated`, which the plugin
+# does not expose.
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
+
 [profile.release]
 panic = "abort"
 codegen-units = 1

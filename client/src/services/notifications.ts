@@ -1,10 +1,10 @@
 /**
  * Cross-platform notification dispatcher and acoustic chime generator.
  *
- * Wraps the Tauri plugin-notification API (desktop) and the browser
- * Notifications API (web) behind a single `fireNotification` call.
- * Handles click routing strictly through authentic event listeners without ever
- * hijacking window focus or reopening events.
+ * Presents a single `fireNotification` call over three very different backends:
+ * a custom Rust command on Windows, the Tauri plugin on other desktops, and the
+ * browser Notifications API on the web. Click routing goes through genuine
+ * platform events — nothing here polls or fakes focus.
  */
 
 import { en } from "@/i18n/en";
@@ -82,102 +82,85 @@ export function playInAppNotificationSound(): void {
 
 // ── Tauri & Global Callbacks ──────────────────────────────────────────────
 
-const TAURI_ACTION_TYPE = "job_match";
+/** Rust-side activation event. Must match `ACTIVATED_EVENT` in `notification.rs`. */
+const TAURI_ACTIVATED_EVENT = "notification://activated";
+
 let _tauriReady = false;
 /** Holds the active navigation callback to execute when an OS notification is explicitly clicked. */
 let _activeNotificationCallback: (() => void) | null = null;
 
 /**
- * One-time Tauri setup: registers action types with explicit interactive buttons and installs
- * authentic click handlers (onAction) to execute routing ONLY when clicked. Idempotent.
+ * Subscribe once to native toast clicks. Idempotent.
+ *
+ * The plugin's `onAction` is deliberately not used: its Actions API is
+ * documented as mobile-only, and no desktop code path ever emits the event it
+ * listens for, so it can never fire here. Worse, the `registerActionTypes` call
+ * that used to precede it invoked a command that does not exist on desktop, so
+ * it threw and skipped the listener registration entirely.
  */
 export async function setupTauriNotifications(): Promise<void> {
-  console.log("[notifications.ts] setupTauriNotifications called. _tauriReady =", _tauriReady);
   if (_tauriReady) return;
   _tauriReady = true;
 
   try {
-    const { registerActionTypes, onAction } =
-      await import("@tauri-apps/plugin-notification");
-    const { getCurrentWindow } = await import("@tauri-apps/api/window");
-
-    console.log("[notifications.ts] Registering Tauri action types:", TAURI_ACTION_TYPE);
-    await registerActionTypes([
-      {
-        id: TAURI_ACTION_TYPE,
-        actions: [
-          {
-            id: "view_match",
-            title: s.viewMatches || "View matches",
-            foreground: true,
-          },
-        ],
-      },
-    ]);
-    console.log("[notifications.ts] Tauri action types registered successfully.");
-
-    // Only execute navigation when an explicit notification action or body click is received via IPC
-    await onAction(async (notification) => {
-      console.log("[notifications.ts] Tauri notification onAction triggered:", notification);
-      const win = getCurrentWindow();
-      await win.unminimize();
-      await win.show();
-      await win.setFocus();
-      if (_activeNotificationCallback) {
-        console.log("[notifications.ts] Executing navigation callback from Tauri onAction");
-        const cb = _activeNotificationCallback;
-        _activeNotificationCallback = null;
-        cb();
-      }
+    const { listen } = await import("@tauri-apps/api/event");
+    await listen(TAURI_ACTIVATED_EVENT, () => {
+      // Rust has already unminimised and focused the window by this point.
+      const cb = _activeNotificationCallback;
+      _activeNotificationCallback = null;
+      cb?.();
     });
-    console.log("[notifications.ts] Tauri onAction listener attached.");
   } catch (err) {
-    console.error("[notifications.ts] Error during setupTauriNotifications:", err);
+    console.error("[notifications.ts] Failed to subscribe to toast activation:", err);
+    // Allow a later notification to retry the subscription.
+    _tauriReady = false;
   }
 }
 
+/**
+ * Show a native toast, preferring the path on which a click can reach us.
+ *
+ * `show_toast` is a custom Rust command that attaches a WinRT `Activated`
+ * handler. It is Windows-only and reports failure elsewhere, so other desktops
+ * fall through to the plugin — the toast still appears there, but clicking it
+ * does nothing, which is an upstream limitation rather than a bug here.
+ */
 async function fireTauriNotification(title: string, body: string, silent: boolean): Promise<void> {
-  console.log("[notifications.ts] fireTauriNotification triggered:", { title, body, silent });
-  try {
-    await setupTauriNotifications();
+  await setupTauriNotifications();
 
+  if (!silent) {
+    // Our own chime: WinRT toasts are silent in some dev configurations.
+    playInAppNotificationSound();
+  }
+
+  try {
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("show_toast", { title, body, silent });
+    return;
+  } catch (err) {
+    console.warn("[notifications.ts] Clickable toast unavailable, using plugin:", err);
+  }
+
+  await firePluginNotification(title, body, silent);
+}
+
+/** Plugin fallback for non-Windows desktops. Shows the toast; the click is inert. */
+async function firePluginNotification(title: string, body: string, silent: boolean): Promise<void> {
+  try {
     const { isPermissionGranted, requestPermission, sendNotification } =
       await import("@tauri-apps/plugin-notification");
 
-    const granted = await isPermissionGranted();
-    console.log("[notifications.ts] Tauri isPermissionGranted check result:", granted);
-
-    if (!granted) {
-      console.log("[notifications.ts] Permission not granted yet, calling requestPermission()...");
+    if (!(await isPermissionGranted())) {
       const perm = await requestPermission();
-      console.log("[notifications.ts] requestPermission() returned:", perm);
       if (perm !== "granted") {
-        console.warn("[notifications.ts] Tauri notification dispatch aborted — permission denied or ignored:", perm);
+        console.warn("[notifications.ts] Notification permission not granted:", perm);
         return;
       }
     }
 
-    if (!silent) {
-      // Trigger audio chime specifically for Tauri OS notifications since WinRT toasts in dev mode can be silent
-      playInAppNotificationSound();
-    }
-
-    console.log("[notifications.ts] Executing notification dispatch in Tauri via IPC sendNotification...");
-    try {
-      // STRICTLY use Tauri's sendNotification IPC plugin.
-      // Do NOT use window.Notification in Tauri because its native click handlers do not bind correctly to Tauri's unminimize/focus methods.
-      sendNotification({
-        title,
-        body,
-        actionTypeId: TAURI_ACTION_TYPE,
-        sound: silent ? undefined : "default",
-      });
-      console.log("[notifications.ts] Dispatched via Tauri IPC sendNotification successfully!");
-    } catch (notifErr) {
-      console.error("[notifications.ts] Fatal error during Tauri sendNotification IPC:", notifErr);
-    }
+    sendNotification({ title, body, sound: silent ? undefined : "default" });
   } catch (err) {
-    console.error("[notifications.ts] Fatal error inside fireTauriNotification:", err);
+    console.error("[notifications.ts] Plugin notification dispatch failed:", err);
   }
 }
 
