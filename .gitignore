@@ -39,6 +39,10 @@ client/src-tauri/target/
 # Agents
 .agents/*
 .claude/*
+# Transient scratch: overwritten every session with the current task and next
+# steps, so a committed copy is stale on arrival and conflicts across worktrees.
+# The durable counterpart, .agent_logs/, IS tracked — see its README.
+sync.md
 CLAUDE.md
 
 # Python
