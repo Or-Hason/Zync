@@ -14,14 +14,13 @@ import { ResumeList } from "@/components/resume/ResumeList";
 import { ResumeEditor } from "@/components/resume/ResumeEditor";
 import { DeleteResumeModal } from "@/components/resume/DeleteResumeModal";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import { LetterTemplateSection } from "@/components/documents/LetterTemplateSection";
 import { RESTORE_KEY } from "./JobAddPage";
 import styles from "./DocumentsManagerPage.module.css";
 
 const dm = en.pages.documentsManager;
 const rm = en.pages.resumeManager;
-
-type ToastState = { message: string; kind: "success" | "error" } | null;
 
 /** Documents Manager: resume management + personal letter template. */
 export function DocumentsManagerPage(): React.JSX.Element {

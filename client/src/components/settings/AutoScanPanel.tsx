@@ -7,7 +7,7 @@ import { DISMISSED_KEY } from "@/components/NotificationCTA";
 import { ScanDiagnosticsPanel } from "./ScanDiagnosticsPanel";
 import { ScanFrequencyField } from "./ScanFrequencyField";
 import { ScanStatusRegion } from "./ScanStatusRegion";
-import type { ToastState } from "./ScanStatusRegion";
+import type { ToastState } from "@/components/resume/Toast";
 import styles from "./AutoScanPanel.module.css";
 
 const s = en.pages.settings.autoScan;

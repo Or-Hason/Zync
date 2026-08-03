@@ -4,12 +4,10 @@
 
 import { en } from "@/i18n/en";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import styles from "./AutoScanPanel.module.css";
 
 const s = en.pages.settings.autoScan;
-
-/** Transient feedback banner state owned by the parent panel. */
-export type ToastState = { message: string; kind: "success" | "error" } | null;
 
 interface ScanStatusRegionProps {
   /** Active toast, or `null` when no feedback is being shown. */

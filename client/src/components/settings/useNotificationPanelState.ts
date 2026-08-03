@@ -10,6 +10,7 @@ import {
   useUpdateNotificationSettings,
   NotificationSettings,
 } from "@/api/settingsApi";
+import type { ToastState } from "@/components/resume/Toast";
 import { isTimeInWindow, timeToMinutes } from "./dndTimeUtils";
 
 const s = en.pages.settings.notificationsPanel;
@@ -20,8 +21,6 @@ export const DEFAULT_DAILY_TIME = "18:00";
 export const DEFAULT_THRESHOLD = 5;
 /** Maximum allowed value for Immediate Threshold. */
 export const MAX_THRESHOLD = 20;
-
-type ToastState = { message: string; kind: "success" | "error"; duration?: number } | null;
 
 export interface NotificationPanelState {
   settings: NotificationSettings | undefined;

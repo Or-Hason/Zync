@@ -4,8 +4,11 @@
 
 import { useState } from "react";
 import { API_BASE } from "@/api/apiBase";
+import { en } from "@/i18n/en";
 import { dispatchTestNotification } from "@/hooks/useNotifications";
 import styles from "./AutoScanPanel.module.css";
+
+const s = en.pages.settings.autoScan.diagnostics;
 
 /**
  * Mock notification triggers used to exercise the alert pipeline without
@@ -44,18 +47,18 @@ export function ScanDiagnosticsPanel(): React.JSX.Element {
     try {
       const res = await fetch(`${API_BASE}/api/notifications/mock-backend-scan`, { method: "POST" });
       if (!res.ok) {
-        console.error("[AutoScanPanel] Backend mock failed:", res.status, res.statusText);
+        console.error("[ScanDiagnosticsPanel] Backend mock failed:", res.status, res.statusText);
       } else {
-        console.log("[AutoScanPanel] Backend mock triggered successfully! Waiting for SSE delivery...");
+        console.log("[ScanDiagnosticsPanel] Backend mock triggered successfully! Waiting for SSE delivery...");
       }
     } catch (err) {
-      console.error("[AutoScanPanel] Network error hitting backend mock endpoint:", err);
+      console.error("[ScanDiagnosticsPanel] Network error hitting backend mock endpoint:", err);
     }
   }
 
   return (
     <div className={styles.field} style={{ marginTop: "1.5rem", borderTop: "1px dashed var(--color-border, rgba(255,255,255,0.15))", paddingTop: "1.25rem" }}>
-      <span className={styles.fieldLabel}>Diagnostic Tools (Mock Trigger)</span>
+      <span className={styles.fieldLabel}>{s.title}</span>
       <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.5rem", flexWrap: "wrap" }}>
         <button
           type="button"
@@ -64,7 +67,7 @@ export function ScanDiagnosticsPanel(): React.JSX.Element {
           disabled={testCountdown !== null}
           onClick={(): void => handleTestTrigger(1)}
         >
-          {testCountdown !== null ? `Firing in ${testCountdown}s...` : "Test Single Match (3s delay)"}
+          {testCountdown !== null ? s.firingLabel.replace("{seconds}", String(testCountdown)) : s.testSingleLabel}
         </button>
         <button
           type="button"
@@ -73,7 +76,7 @@ export function ScanDiagnosticsPanel(): React.JSX.Element {
           disabled={testCountdown !== null}
           onClick={(): void => handleTestTrigger(4)}
         >
-          {testCountdown !== null ? `Firing in ${testCountdown}s...` : "Test 4x Matches (3s delay)"}
+          {testCountdown !== null ? s.firingLabel.replace("{seconds}", String(testCountdown)) : s.testQuadLabel}
         </button>
         <button
           type="button"
@@ -81,11 +84,11 @@ export function ScanDiagnosticsPanel(): React.JSX.Element {
           style={{ cursor: "pointer", padding: "0.5rem 1rem", height: "auto", width: "auto", minWidth: "180px", textAlign: "center", border: "1px dashed var(--color-primary)" }}
           onClick={(): void => void handleBackendMock()}
         >
-          Trigger Backend Mock
+          {s.backendMockLabel}
         </button>
       </div>
       <p className={styles.hint} style={{ marginTop: "0.5rem" }}>
-        Starts a 3-second delay so you can test focus loss, window minimization, or tab switching without executing live backend scans or burning AI tokens. The Backend Mock tests the entire SSE pipeline from Python to UI. Check DevTools console for detailed pipeline logs.
+        {s.hint}
       </p>
     </div>
   );

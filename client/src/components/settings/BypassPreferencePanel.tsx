@@ -3,11 +3,10 @@ import { en } from "@/i18n/en";
 import { useBypassPreference, useSetBypassPreference } from "@/api/settingsApi";
 import type { BypassPreference } from "@/api/settingsApi";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import styles from "./BypassPreferencePanel.module.css";
 
 const s = en.pages.settings.bypassPreference;
-
-type ToastState = { message: string; kind: "success" | "error" } | null;
 
 interface PreferenceOption {
   value: BypassPreference;

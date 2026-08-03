@@ -1,7 +1,10 @@
 import { useEffect } from "react";
 import styles from "./Toast.module.css";
 
-type ToastKind = "success" | "error";
+export type ToastKind = "success" | "error";
+
+/** Shared shape for ephemeral panel/page feedback rendered via {@link Toast}. */
+export type ToastState = { message: string; kind: ToastKind; duration?: number } | null;
 
 interface ToastProps {
   message: string;

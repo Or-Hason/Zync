@@ -2,12 +2,11 @@ import { useState, useRef } from "react";
 import { en } from "@/i18n/en";
 import { useBlacklist, useAddKeyword, useRemoveKeyword } from "@/api/settingsApi";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import styles from "./BlacklistPanel.module.css";
 
 const s = en.pages.settings.blacklist;
 const KEYWORD_MAX_LENGTH = 50;
-
-type ToastState = { message: string; kind: "success" | "error" } | null;
 
 /**
  * Panel for managing blacklist keywords: fetch, add, and remove.

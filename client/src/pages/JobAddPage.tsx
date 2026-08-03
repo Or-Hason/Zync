@@ -10,13 +10,13 @@ import { BlacklistBypassModal } from "@/components/jobs/BlacklistBypassModal";
 import { NoActiveResumeModal } from "@/components/jobs/NoActiveResumeModal";
 import { ActiveResumeSelector } from "@/components/jobs/ActiveResumeSelector";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import pageStyles from "./Page.module.css";
 import styles from "./JobAddPage.module.css";
 
 const s = en.pages.jobAdd;
 const toastS = en.pages.jobAdd.blacklistToasts;
 
-type ToastState = { message: string; kind: "success" | "error"; duration?: number } | null;
 type ModalState = { keyword: string } | null;
 
 interface ErrorResponse {

@@ -54,6 +54,14 @@ export const settings = {
     scanningNow: "Scanning…",
     pendingFirstScan: "Pending first scan",
     scanDue: "Due now",
+    diagnostics: {
+      title: "Diagnostic Tools (Mock Trigger)",
+      testSingleLabel: "Test Single Match (3s delay)",
+      testQuadLabel: "Test 4x Matches (3s delay)",
+      firingLabel: "Firing in {seconds}s...",
+      backendMockLabel: "Trigger Backend Mock",
+      hint: "Starts a 3-second delay so you can test focus loss, window minimization, or tab switching without executing live backend scans or burning AI tokens. The Backend Mock tests the entire SSE pipeline from Python to UI. Check DevTools console for detailed pipeline logs.",
+    },
   },
   notificationsPanel: {
     title: "Notification Preferences",
