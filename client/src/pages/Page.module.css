@@ -2,6 +2,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-height: 0; /* required for overflow-y: auto to work inside a flex column */
   padding: 32px 40px;
   overflow-y: auto;
   gap: 24px;

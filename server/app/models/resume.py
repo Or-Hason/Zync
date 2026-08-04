@@ -13,6 +13,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.application import Application
+    from app.models.job_score import JobScore
 
 
 class Resume(Base):
@@ -37,4 +38,13 @@ class Resume(Base):
 
     applications: Mapped[list[Application]] = relationship(
         "Application", back_populates="resume", cascade="all, delete-orphan"
+    )
+    # Scores this CV produced. ``passive_deletes`` lets the DB-level ON DELETE
+    # CASCADE remove them without SQLAlchemy loading the collection first — the
+    # resume delete endpoint issues a Core DELETE for exactly that reason.
+    scores: Mapped[list[JobScore]] = relationship(
+        "JobScore",
+        back_populates="resume",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )

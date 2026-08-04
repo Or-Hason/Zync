@@ -93,9 +93,6 @@ Push notifications fire immediately after the background scraper (or manual scan
 | `source_type` | VARCHAR(50) | `'manual'` or `'auto'`. |
 | `source_url` | TEXT | Nullable. Originating URL. |
 | `search_filters` | JSONB | Nullable. Keywords used to discover the job (auto-scraping). |
-| `match_score` | INTEGER | Nullable. Gemini compatibility score, 0–100. |
-| `scored_by_resume_id` | UUID | Nullable. FK → `resumes.id` (SET NULL on delete). Resume that produced the score. |
-| `score_details` | JSONB | Nullable. `{ rationale, matched_skills, missing_skills }` from Gemini. |
 | `status` | VARCHAR(50) | `not_applied` · `applied` · `auto_rejected` · `user_rejected` · `assessment_task` · `assessment_rejected` · `home_test` · `home_test_rejected` · `professional_interview` · `professional_interview_rejected` · `hr_interview` · `hr_interview_rejected` · `accepted`. |
 | `application_options` | JSONB | Nullable. List of extracted email addresses or external ATS URLs from the job text. |
 | `recommended_apply_method` | TEXT | Preferred application channel extracted by Ollama. Defaults to `"Apply via the platform's native button"`. |
@@ -104,6 +101,24 @@ Push notifications fire immediately after the background scraper (or manual scan
 | `notified_at` | TIMESTAMPTZ | Nullable. Set when a push notification was emitted; prevents duplicate notifications on subsequent scraper ticks. |
 | `published_at` | TIMESTAMPTZ | Nullable. Job posting date extracted from content. |
 | `created_at` | TIMESTAMPTZ | DB insertion time. |
+
+### Table: `job_scores`
+
+Bridging table between `jobs` and `resumes`: **one row per (job, CV) pair**. Scoring a job with a second CV adds a row here — the job row is never duplicated. A re-score with a CV that already scored the job is an UPSERT on the unique constraint.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `job_id` | UUID | FK → `jobs.id` (CASCADE on delete). |
+| `resume_id` | UUID | FK → `resumes.id` (CASCADE on delete). Deleting a CV removes its scores; the jobs survive. |
+| `match_score` | INTEGER | Gemini compatibility score, 0–100. Not nullable — an unscored job simply has no row. |
+| `score_details` | JSONB | Nullable. `{ rationale, matched_skills, missing_skills }` from Gemini. |
+| `created_at` | TIMESTAMPTZ | First score time. |
+| `updated_at` | TIMESTAMPTZ | Last re-score time. |
+
+`UNIQUE (job_id, resume_id)` — a given CV holds at most one score per job.
+
+**Score selection (single source of truth):** endpoints and the Explorer grid both resolve "which score represents this job" the same way — the **Active Resume**'s score if it has one, otherwise the **highest** score. The Explorer's *Show Best Match* toggle overrides step 1 and always takes the highest.
 
 ### Table: `resumes`
 

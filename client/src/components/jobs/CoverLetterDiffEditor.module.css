@@ -1,0 +1,133 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ── Gemini summary bubble ───────────────────────────────────────────────── */
+
+.summaryBubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 16px;
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, transparent);
+  border-radius: 8px;
+}
+
+.summaryIcon {
+  font-size: 14px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.summaryText {
+  font-size: 13px;
+  color: var(--color-text);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.modeToggle {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.modeBtn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modeBtn:first-child {
+  border-right: 1px solid var(--color-border);
+}
+
+.modeBtnActive {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.actionBtn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.actionBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.actionBtnPrimary {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+.actionBtnPrimary:hover {
+  opacity: 0.85;
+  color: #fff;
+}
+
+/* ── Diff viewer wrapper ─────────────────────────────────────────────────── */
+
+.diffWrapper {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+/* ── Edit textarea ───────────────────────────────────────────────────────── */
+
+.editArea {
+  width: 100%;
+  min-height: 400px;
+  padding: 14px 16px;
+  font-size: 13px;
+  line-height: 1.7;
+  font-family: inherit;
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.editArea:focus {
+  border-color: var(--color-accent);
+}

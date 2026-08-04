@@ -1,0 +1,69 @@
+.centeredState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 24px;
+  text-align: center;
+}
+
+.stateHeading {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0;
+}
+
+.stateDescription {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  max-width: 400px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.primaryBtn {
+  margin-top: 4px;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.primaryBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.privacyNotice {
+  font-size: 11px;
+  color: var(--color-text-dim, var(--color-text-muted));
+  max-width: 380px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.errorMsg {
+  font-size: 13px;
+  color: var(--color-error);
+  margin: 0;
+}
+
+.uploadState {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px 24px;
+  text-align: center;
+  width: 100%;
+}
+
+.editorContainer {
+  padding: 16px 0;
+}

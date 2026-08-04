@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { en } from "@/i18n/en";
-import {
-  SCAN_FREQUENCY_CHOICES,
-  useScanStatusPolling,
-  useUpdateScanSettings,
-} from "@/api/settingsApi";
+import { useScanStatusPolling, useUpdateScanSettings } from "@/api/settingsApi";
 import type { ScanFrequencyHours, ScanSettings } from "@/api/settingsApi";
 import { useActiveResume } from "@/api/resumeApi";
 import { DISMISSED_KEY } from "@/components/NotificationCTA";
-import { Toast } from "@/components/resume/Toast";
+import { ScanDiagnosticsPanel } from "./ScanDiagnosticsPanel";
+import { ScanFrequencyField } from "./ScanFrequencyField";
+import { ScanStatusRegion } from "./ScanStatusRegion";
+import type { ToastState } from "@/components/resume/Toast";
 import styles from "./AutoScanPanel.module.css";
 
 const s = en.pages.settings.autoScan;
@@ -25,18 +24,10 @@ function formatCountdown(ms: number): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-type ToastState = { message: string; kind: "success" | "error" } | null;
-
 /** Clamp a score threshold into the inclusive 0–100 range. */
 function clampThreshold(value: number): number {
   if (Number.isNaN(value)) return THRESHOLD_MIN;
   return Math.min(THRESHOLD_MAX, Math.max(THRESHOLD_MIN, Math.round(value)));
-}
-
-/** Human-readable "Every N hour(s)" label for a frequency choice. */
-function frequencyLabel(hours: number): string {
-  const suffix = hours === 1 ? s.frequencyHourSuffix : s.frequencyHoursSuffix;
-  return `${s.frequencyEveryPrefix} ${hours} ${suffix}`;
 }
 
 /**
@@ -130,26 +121,17 @@ export function AutoScanPanel(): React.JSX.Element {
 
   return (
     <section className={styles.panel} aria-labelledby="auto-scan-title">
-      {toast && (
-        <Toast
-          message={toast.message}
-          kind={toast.kind}
-          onDismiss={(): void => setToast(null)}
-        />
-      )}
-
       <div className={styles.panelHeader}>
         <h2 id="auto-scan-title" className={styles.panelTitle}>{s.title}</h2>
         <p className={styles.panelSubtitle}>{s.subtitle}</p>
       </div>
 
-      {isLoading && (
-        <p className={styles.stateText} aria-busy="true">{s.loading}</p>
-      )}
-
-      {isError && (
-        <p className={styles.errorState} role="alert">{s.fetchError}</p>
-      )}
+      <ScanStatusRegion
+        toast={toast}
+        onDismissToast={(): void => setToast(null)}
+        isLoading={isLoading}
+        isError={isError}
+      />
 
       {!isLoading && !isError && settings && (
         <div className={styles.body}>
@@ -196,27 +178,11 @@ export function AutoScanPanel(): React.JSX.Element {
             </div>
           )}
 
-          <div className={styles.field}>
-            <label className={styles.fieldLabel} htmlFor="scan-frequency">
-              {s.frequencyLabel}
-            </label>
-            <select
-              id="scan-frequency"
-              className={styles.select}
-              value={settings.scan_frequency_hours}
-              disabled={subControlsDisabled}
-              onChange={(e): void =>
-                handleFrequency(Number(e.target.value) as ScanFrequencyHours)
-              }
-              aria-label={s.frequencyAriaLabel}
-            >
-              {SCAN_FREQUENCY_CHOICES.map((hours) => (
-                <option key={hours} value={hours}>
-                  {frequencyLabel(hours)}
-                </option>
-              ))}
-            </select>
-          </div>
+          <ScanFrequencyField
+            value={settings.scan_frequency_hours}
+            disabled={subControlsDisabled}
+            onChange={handleFrequency}
+          />
 
           <div className={styles.field}>
             <label className={styles.fieldLabel} htmlFor="scan-threshold">
@@ -238,6 +204,8 @@ export function AutoScanPanel(): React.JSX.Element {
             />
             <p className={styles.hint}>{s.thresholdHint}</p>
           </div>
+
+          <ScanDiagnosticsPanel />
         </div>
       )}
     </section>

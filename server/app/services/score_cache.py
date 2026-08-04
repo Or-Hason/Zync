@@ -2,8 +2,9 @@
 
 To avoid burning Gemini tokens (and quota) on jobs the user has effectively
 already scored, a new job is compared against jobs previously scored *with the
-same active resume*. A TF-IDF cosine similarity above the cache threshold means
-the prior score and rationale can be replayed verbatim.
+same active resume* (i.e. the ``job_scores`` rows for that resume). A TF-IDF
+cosine similarity above the cache threshold means the prior score and rationale
+can be replayed verbatim.
 """
 
 from __future__ import annotations

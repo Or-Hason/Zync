@@ -1,8 +1,14 @@
 .selector {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
+}
+
+.selectorColumn {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
 }
 
 .label {
@@ -10,6 +16,15 @@
   font-weight: 500;
   color: var(--color-text-muted);
   white-space: nowrap;
+}
+
+/* Caption above the control — styled to match the other header field captions. */
+.labelColumn {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .dropdown {
@@ -51,21 +66,31 @@
   transform: scaleY(-1);
 }
 
+/*
+ * The menu is sized by its own contents, not by the button.
+ * It is right-anchored so a wide list opens inward instead
+ * of off-screen — this selector sits in the right-hand header cluster.
+ */
 .menu {
   position: absolute;
   top: 100%;
-  left: 0;
   right: 0;
+  left: auto;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(380px, 80vw);
+  max-height: 320px;
+  overflow-y: auto;
   margin-top: 4px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
   z-index: 100;
-  overflow: hidden;
 }
 
 .menuItem {
+  display: block;
   width: 100%;
   padding: 8px 12px;
   background: transparent;
@@ -74,6 +99,9 @@
   font-size: 13px;
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transition: background var(--transition), color var(--transition);
 }
 

@@ -1,9 +1,23 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import type { JobScrapeResponse } from "@/types/job";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { JobFiltersParams, JobListItem, JobScrapeResponse } from "@/types/job";
+import { API_BASE } from "@/api/apiBase";
 
 const JOB_DETAIL_STALE_MS = 5 * 60 * 1000; // 5 min — serves notification deep-links from cache
+const SKILLS_STALE_MS = 5 * 60 * 1000; // skills change rarely
 
-const BASE = "/api/jobs";
+const BASE = `${API_BASE}/api/jobs`;
+
+export const JOBS_KEYS = {
+  list: (params: JobFiltersParams) => ["jobs", "list", params] as const,
+  skills: ["jobs", "skills"] as const,
+  facets: ["jobs", "facets"] as const,
+};
+
+/** Full Role/Company option catalogues for the Explorer autocompletes. */
+export interface JobFacets {
+  roles: string[];
+  companies: string[];
+}
 
 export interface ScrapeRequest {
   url?: string;
@@ -110,5 +124,104 @@ export function useCheckCachedScore(
     queryFn: () => checkCachedScore(jobId!, resumeId!),
     enabled: jobId !== null && resumeId !== null,
     staleTime: 30_000,
+  });
+}
+
+async function fetchJobs(params: JobFiltersParams): Promise<JobListItem[]> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.date_from) qs.set("date_from", params.date_from);
+  if (params.date_to) qs.set("date_to", params.date_to);
+  if (params.min_score !== undefined) qs.set("min_score", String(params.min_score));
+  if (params.role) qs.set("role", params.role);
+  if (params.company) qs.set("company", params.company);
+  if (params.cv_id) qs.set("cv_id", params.cv_id);
+  if (params.source_type) qs.set("source_type", params.source_type);
+  if (params.has_cover_letter) qs.set("has_cover_letter", "true");
+  if (params.is_new) qs.set("is_new", "true");
+  if (params.is_unread) qs.set("is_unread", "true");
+  if (params.skills?.length) params.skills.forEach((s) => qs.append("skills", s));
+  if (params.min_experience !== undefined) qs.set("min_experience", String(params.min_experience));
+  if (params.status) qs.set("status", params.status);
+
+  const path = qs.toString() ? `${BASE}?${qs.toString()}` : BASE;
+  const res = await fetch(path);
+  if (!res.ok) throw new Error("Failed to fetch jobs");
+  return res.json() as Promise<JobListItem[]>;
+}
+
+async function fetchJobSkills(): Promise<string[]> {
+  const res = await fetch(`${BASE}/skills`);
+  if (!res.ok) throw new Error("Failed to fetch job skills");
+  return res.json() as Promise<string[]>;
+}
+
+/** Fetch the Explorer job list, re-fetching whenever filter params change. */
+export function useJobs(params: JobFiltersParams): ReturnType<typeof useQuery<JobListItem[]>> {
+  return useQuery<JobListItem[]>({
+    queryKey: JOBS_KEYS.list(params),
+    queryFn: () => fetchJobs(params),
+    staleTime: 0,
+  });
+}
+
+async function markJobRead(jobId: string): Promise<void> {
+  await fetch(`${BASE}/${encodeURIComponent(jobId)}/read`, { method: "PATCH" });
+}
+
+/** Mark a job as read when the user opens its detail view. Invalidates the Explorer list. */
+export function useMarkJobRead(): ReturnType<typeof useMutation<void, Error, string>> {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string>({
+    mutationFn: markJobRead,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+    },
+  });
+}
+
+async function markAllJobsRead(): Promise<void> {
+  const res = await fetch(`${BASE}/read-all`, { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark all jobs as read");
+}
+
+/** Mark every unread job as read. Invalidates the Explorer list on success. */
+export function useMarkAllJobsRead(): ReturnType<typeof useMutation<void, Error, void>> {
+  const qc = useQueryClient();
+  return useMutation<void, Error, void>({
+    mutationFn: markAllJobsRead,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+    },
+  });
+}
+
+async function fetchJobFacets(): Promise<JobFacets> {
+  const res = await fetch(`${BASE}/facets`);
+  if (!res.ok) throw new Error("Failed to fetch job facets");
+  return res.json() as Promise<JobFacets>;
+}
+
+/**
+ * Fetch every distinct role and company across all jobs.
+ *
+ * Separate from `useJobs` on purpose: the autocomplete options must NOT shrink
+ * to the currently filtered rows, otherwise picking a Role leaves that Role as
+ * the only selectable option.
+ */
+export function useJobFacets(): ReturnType<typeof useQuery<JobFacets>> {
+  return useQuery<JobFacets>({
+    queryKey: JOBS_KEYS.facets,
+    queryFn: fetchJobFacets,
+    staleTime: SKILLS_STALE_MS,
+  });
+}
+
+/** Fetch all distinct skill strings from DB requirements JSONB (for autocomplete). */
+export function useJobSkills(): ReturnType<typeof useQuery<string[]>> {
+  return useQuery<string[]>({
+    queryKey: JOBS_KEYS.skills,
+    queryFn: fetchJobSkills,
+    staleTime: SKILLS_STALE_MS,
   });
 }

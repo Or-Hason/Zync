@@ -14,12 +14,11 @@ import { ResumeList } from "@/components/resume/ResumeList";
 import { ResumeEditor } from "@/components/resume/ResumeEditor";
 import { DeleteResumeModal } from "@/components/resume/DeleteResumeModal";
 import { Toast } from "@/components/resume/Toast";
+import type { ToastState } from "@/components/resume/Toast";
 import { RESTORE_KEY } from "./JobAddPage";
 import styles from "./ResumeManagerPage.module.css";
 
 const rm = en.pages.resumeManager;
-
-type ToastState = { message: string; kind: "success" | "error" } | null;
 
 /** Full Resume Manager: upload → parse → view/edit → save. */
 export function ResumeManagerPage(): React.JSX.Element {

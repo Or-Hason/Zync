@@ -1,0 +1,295 @@
+"""Core ingestion path: extract -> classify -> dedupe -> cache -> blacklist -> score.
+
+Split out of ``job_pipeline.py`` — see that module for the re-exported
+public API.
+
+PII / privacy rule: this module logs nothing containing raw job text or resume
+PII — callers log only ``job_id`` and ``source_type``.
+"""
+
+from __future__ import annotations
+
+import logging
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.job import Job
+from app.schemas.job import ParsedJob, ScoreResult
+from app.services.blacklist_filter import find_blacklist_hit
+from app.services.duplicate_detection import DuplicateAssessment, detect_duplicate
+from app.services.gemini_client import GeminiUnavailableError
+from app.services.job_parser import sanitize_job_data
+from app.services.job_pipeline_parts.outcomes import (
+    KIND_BLACKLISTED,
+    KIND_CACHE_HIT,
+    KIND_CLASSIFICATION_REJECTED,
+    KIND_GEMINI_UNAVAILABLE,
+    KIND_GEMINI_UNCONFIGURED,
+    KIND_NO_ACTIVE_RESUME,
+    KIND_OLLAMA_PARSE_FAILURE,
+    KIND_SCORED,
+    PipelineOutcome,
+    build_score_details,
+)
+from app.services.job_repository import (
+    load_existing_jobs,
+    load_scored_jobs,
+    new_job,
+    new_job_score,
+)
+from app.services.score_cache import find_cached_score
+from app.services.system_advice import LOW_SCORE_THRESHOLD, build_system_advice
+from app.services.text_similarity import comparison_string
+
+logger = logging.getLogger(__name__)
+
+
+async def _persist(db: AsyncSession, job: Job) -> None:
+    """Add, flush, and refresh a job row so server defaults populate."""
+    db.add(job)
+    await db.flush()
+    await db.refresh(job)
+
+
+async def run_job_pipeline(
+    *,
+    db: AsyncSession,
+    ollama,
+    gemini,
+    store,
+    content: str,
+    source_url: str | None,
+    source_type: str = "manual",
+    search_filters: dict | None = None,
+    force_score: bool = False,
+    existing_job_id: UUID | None = None,
+    active_resume=None,
+) -> PipelineOutcome:
+    """Run extraction → classification → dedupe → cache → blacklist → score.
+
+    Args:
+        db: Active async DB session.
+        ollama: Ollama client (``parse_job`` coroutine).
+        gemini: Gemini client (``is_configured`` + ``score`` coroutine).
+        store: Settings store (``get_blacklist`` coroutine).
+        content: Already-resolved, size-checked job text.
+        source_url: Originating URL (``None`` for raw-text ingestion).
+        source_type: Ingestion source id (``"manual"`` / ``"jobmaster"``).
+        search_filters: Scraper metadata for the ``search_filters`` JSONB column.
+        force_score: Bypass blacklist rejection when ``True``.
+        existing_job_id: Pre-created row to reuse on the no-active-resume path.
+        active_resume: Pre-loaded active resume; loaded lazily when ``None``.
+
+    Returns:
+        A :class:`PipelineOutcome` the caller maps to a response or a log entry.
+    """
+    raw_parse = await ollama.parse_job(content)
+    if not raw_parse:
+        logger.warning("Ollama returned empty parse after retries — dropping job.")
+        return PipelineOutcome(kind=KIND_OLLAMA_PARSE_FAILURE)
+
+    parsed = sanitize_job_data(raw_parse, raw_text=content)
+
+    # Reliable fallback: use raw content when the model omits core_job_posting.
+    if not parsed.core_job_posting:
+        parsed.core_job_posting = content
+
+    # ── Classification gate: halt before any DB write on junk input ──────────
+    classification = parsed.content_classification
+    if classification is not None and classification != "VALID_JOB":
+        return PipelineOutcome(kind=KIND_CLASSIFICATION_REJECTED, parsed=parsed)
+
+    # Fallback: use inferred_role as title when the posting has no explicit title.
+    if not parsed.job_title:
+        parsed.job_title = parsed.requirements.inferred_role or "Unknown Title"
+
+    existing_jobs = await load_existing_jobs(db)
+    assessment = detect_duplicate(parsed.core_job_posting, existing_jobs)
+    candidate_text = comparison_string(parsed.job_title, parsed.job_description)
+
+    if active_resume is None:
+        # Imported lazily to avoid a service→api import at module load time.
+        from app.api.resumes_active import load_active_resume
+
+        active_resume = await load_active_resume(db)
+
+    # ── Cache check — MUST run before blacklist ──────────────────────────────
+    if active_resume is not None:
+        scored_jobs = await load_scored_jobs(db, active_resume.id)
+        cached = find_cached_score(candidate_text, scored_jobs)
+        if cached is not None:
+            return await _handle_cache_hit(
+                db,
+                parsed=parsed,
+                cached=cached,
+                assessment=assessment,
+                source_url=source_url,
+                source_type=source_type,
+                search_filters=search_filters,
+                active_resume_id=active_resume.id,
+            )
+
+    # ── Blacklist check ──────────────────────────────────────────────────────
+    keyword = find_blacklist_hit(
+        parsed.job_title, parsed.job_description, await store.get_blacklist()
+    )
+    if keyword and not force_score:
+        job = new_job(
+            parsed,
+            raw_content=parsed.core_job_posting,
+            source_url=source_url,
+            assessment=assessment,
+            status="auto_rejected",
+            source_type=source_type,
+            search_filters=search_filters,
+        )
+        await _persist(db, job)
+        return PipelineOutcome(
+            kind=KIND_BLACKLISTED, parsed=parsed, job=job, blacklist_keyword=keyword
+        )
+
+    # ── No-active-resume guard ───────────────────────────────────────────────
+    if active_resume is None:
+        if existing_job_id is not None:
+            existing_row = await db.get(Job, existing_job_id)
+            if existing_row is not None:
+                return PipelineOutcome(
+                    kind=KIND_NO_ACTIVE_RESUME, parsed=parsed, job=existing_row
+                )
+        job = new_job(
+            parsed,
+            raw_content=parsed.core_job_posting,
+            source_url=source_url,
+            assessment=assessment,
+            status="not_applied",
+            source_type=source_type,
+            search_filters=search_filters,
+        )
+        await _persist(db, job)
+        return PipelineOutcome(kind=KIND_NO_ACTIVE_RESUME, parsed=parsed, job=job)
+
+    # ── Gemini scoring ───────────────────────────────────────────────────────
+    if not gemini.is_configured:
+        return PipelineOutcome(kind=KIND_GEMINI_UNCONFIGURED, parsed=parsed)
+    try:
+        score = await gemini.score(
+            parsed.job_title,
+            parsed.job_description,
+            parsed.requirements.model_dump(),
+            active_resume.structured_data,
+        )
+    except GeminiUnavailableError:
+        return PipelineOutcome(kind=KIND_GEMINI_UNAVAILABLE, parsed=parsed)
+
+    if score is not None:
+        match_score: int | None = score.match_score
+        scored_by: UUID | None = active_resume.id
+        job_status = (
+            "auto_rejected" if match_score < LOW_SCORE_THRESHOLD else "not_applied"
+        )
+    else:
+        match_score = None
+        scored_by = None
+        job_status = "not_applied"
+
+    advice = build_system_advice(
+        match_score=match_score,
+        is_duplicate=assessment.is_duplicate,
+        duplicate_chance=assessment.duplicate_chance,
+        matched_job_status=assessment.matched_job_status,
+    )
+
+    job = new_job(
+        parsed,
+        raw_content=parsed.core_job_posting,
+        source_url=source_url,
+        assessment=assessment,
+        status=job_status,
+        source_type=source_type,
+        search_filters=search_filters,
+    )
+    await _persist(db, job)
+
+    # The job row is brand new, so no score can exist for it yet — a plain insert
+    # is correct here; re-scoring an existing job goes through ``rescore_job``.
+    if score is not None:
+        db.add(
+            new_job_score(
+                job_id=job.id,
+                resume_id=active_resume.id,
+                match_score=score.match_score,
+                score_details=build_score_details(score),
+            )
+        )
+        await db.flush()
+
+    return PipelineOutcome(
+        kind=KIND_SCORED,
+        parsed=parsed,
+        job=job,
+        score=score,
+        advice=advice,
+        scored_by_resume_id=scored_by,
+    )
+
+
+async def _handle_cache_hit(
+    db: AsyncSession,
+    *,
+    parsed: ParsedJob,
+    cached: ScoreResult,
+    assessment: DuplicateAssessment,
+    source_url: str | None,
+    source_type: str,
+    search_filters: dict | None,
+    active_resume_id: UUID,
+) -> PipelineOutcome:
+    """Insert a new row replaying a cached score (no Gemini call).
+
+    A cache hit means near-identical content was already scored — the new row is
+    flagged as a duplicate so the UI surfaces the warning, and the cached score
+    is replayed verbatim.
+    """
+    cached_status = (
+        "auto_rejected" if cached.match_score < LOW_SCORE_THRESHOLD else "not_applied"
+    )
+    cached_assessment = DuplicateAssessment(
+        is_duplicate=True,
+        duplicate_chance=max(assessment.duplicate_chance or 0, 90),
+        matched_job_status=assessment.matched_job_status,
+    )
+    advice = build_system_advice(
+        match_score=cached.match_score,
+        is_duplicate=True,
+        duplicate_chance=cached_assessment.duplicate_chance,
+        matched_job_status=assessment.matched_job_status,
+    )
+    job = new_job(
+        parsed,
+        raw_content=parsed.core_job_posting,
+        source_url=source_url,
+        assessment=cached_assessment,
+        status=cached_status,
+        source_type=source_type,
+        search_filters=search_filters,
+    )
+    await _persist(db, job)
+    db.add(
+        new_job_score(
+            job_id=job.id,
+            resume_id=active_resume_id,
+            match_score=cached.match_score,
+            score_details=build_score_details(cached),
+        )
+    )
+    await db.flush()
+    return PipelineOutcome(
+        kind=KIND_CACHE_HIT,
+        parsed=parsed,
+        job=job,
+        score=cached,
+        advice=advice,
+        score_cached=True,
+        scored_by_resume_id=active_resume_id,
+    )

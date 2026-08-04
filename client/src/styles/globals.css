@@ -79,3 +79,30 @@ button {
 ::-webkit-scrollbar-track  { background: transparent; }
 ::-webkit-scrollbar-thumb  { background: var(--color-border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-dim); }
+
+/* ── Print: show only cover letter content ───────────────────────────────── */
+@page { margin: 0; }    /* removes browser-generated URL, date, page-number headers */
+@media print {
+  body > * { display: none !important; }
+  #cover-letter-print {
+    display: block !important;
+    font-family: serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    padding: 40px;       /* replaces the @page margin so text isn't flush with edge */
+    white-space: pre-wrap;
+    color: #000;
+    background: #fff;
+  }
+}
+
+/* ── Form Element Overrides ───────────────────────────────────────────────── */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield; /* Firefox fallback */
+  appearance: textfield;
+}

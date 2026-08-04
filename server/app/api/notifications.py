@@ -49,6 +49,29 @@ async def notification_stream() -> StreamingResponse:
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # disable Nginx buffering for SSE
         },
     )
+
+
+@router.post(
+    "/mock-backend-scan",
+    summary="Mock a background job scan completion to test SSE transmission",
+)
+async def mock_backend_scan() -> dict:
+    """Emits a fake job match event over the real SSE bus."""
+    import asyncio
+    import uuid
+    
+    # Wait slightly to mimic background processing before pushing to SSE queue
+    await asyncio.sleep(0.5)
+    
+    await notification_bus.emit_job_match(
+        job_id=str(uuid.uuid4()),
+        job_title="Senior Mock Engineer (Backend Test)",
+        match_score=95,
+        job_count=1,
+        silent=False,
+    )
+    return {"status": "mock_emitted"}

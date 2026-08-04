@@ -1,0 +1,158 @@
+/* Borderless: the parent `.filterStack` owns the card framing. */
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/*
+ * Search takes the leftover width but may shrink to 150px, so the six primary
+ * filters fit on a single line at desktop widths and only wrap on small ones.
+ */
+.fieldSearch {
+  flex: 1 1 150px;
+  min-width: 150px;
+  align-items: stretch;
+}
+
+.miniLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  text-align: center;
+  white-space: nowrap;
+}
+
+.search {
+  width: 100%;
+  padding: 7px 12px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.search:focus {
+  border-color: var(--color-accent);
+}
+
+/* Date range */
+.dateRange {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dateInput {
+  padding: 6px 6px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 12px;
+  outline: none;
+  width: 116px;
+  transition: border-color var(--transition);
+  color-scheme: dark;
+}
+
+.dateInput:focus {
+  border-color: var(--color-accent);
+}
+
+.dateSep {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
+/*
+ * Width is pinned: as a flex item with no basis the select absorbed all the
+ * row's leftover space (520px on a 779px row), which pushed the neighbouring
+ * fields onto an extra line for no benefit.
+ */
+.select {
+  width: 150px;
+  padding: 7px 10px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+}
+
+.select:focus {
+  border-color: var(--color-accent);
+}
+
+.autocomplete {
+  padding: 7px 8px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+  width: 132px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.autocomplete:focus {
+  border-color: var(--color-accent);
+}
+
+.scoreWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.numberInput {
+  width: 64px;
+  padding: 7px 8px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+  text-align: center;
+  outline: none;
+}
+
+.numberInput:focus {
+  border-color: var(--color-accent);
+}
+
+/* Pushed to the far end of the row so it never sits between two inputs. */
+.clearBtn {
+  padding: 7px 12px;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+  align-self: flex-end;
+}
+
+.clearBtn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}

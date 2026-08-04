@@ -1,16 +1,14 @@
 .editor {
   display: flex;
   flex-direction: column;
-  flex: 1;
   gap: 16px;
-  overflow: hidden;
 }
 
 .panels {
   display: grid;
   grid-template-columns: 340px 1fr;
   gap: 16px;
-  flex: 1;
+  max-height: 540px;
   overflow: hidden;
 }
 

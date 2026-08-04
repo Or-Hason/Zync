@@ -1,8 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ResumeListItem, ResumeRead, ResumeUpdate } from "@/types/resume";
 import { SETTINGS_KEYS } from "@/api/settingsApi";
+import { API_BASE } from "@/api/apiBase";
 
-const BASE = "/api/resumes";
+const BASE = `${API_BASE}/api/resumes`;
 
 async function fetchResumes(): Promise<ResumeListItem[]> {
   const res = await fetch(BASE);
@@ -131,11 +132,15 @@ export function useDeleteResume(): ReturnType<
   });
 }
 
-/** Fetch the currently active resume (null if none). */
+/** Fetch the currently active resume (null if none).
+ *  placeholderData keeps the previous value during background refetches so
+ *  role-pinning in the Explorer doesn't flash when the resume selection changes.
+ */
 export function useActiveResume(): ReturnType<typeof useQuery<ResumeListItem | null>> {
   return useQuery<ResumeListItem | null>({
     queryKey: RESUME_KEYS.active,
     queryFn: fetchActiveResume,
+    placeholderData: keepPreviousData,
   });
 }
 

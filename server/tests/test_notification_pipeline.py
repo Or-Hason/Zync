@@ -10,9 +10,10 @@ from uuid import uuid4
 
 import pytest
 
-from app.scraper import jobmaster
+from app.scraper import jobmaster, jobmaster_process
 from app.scraper.jobmaster import run_scan
 from app.services import notification_bus
+from app.schemas.job import ScoreResult
 from app.services.job_pipeline import KIND_GEMINI_UNAVAILABLE, KIND_SCORED, PipelineOutcome
 
 
@@ -35,6 +36,8 @@ class TestNotificationBus:
             parsed = json.loads(msg.split("data: ", 1)[1])
             assert parsed["job_id"] == "job-abc"
             assert parsed["match_score"] == 88
+            assert parsed["job_count"] == 1
+            assert parsed["silent"] is False
         finally:
             notification_bus.remove_client(q)
 
@@ -130,13 +133,19 @@ def _resume(role: str = "Backend") -> Any:
     )
 
 
-def _make_job(*, match_score: int | None = 85, notified_at: Any = None) -> Any:
+def _make_job(*, notified_at: Any = None) -> Any:
+    """Build a job row stand-in. Scores live on the outcome, not on the job."""
     return SimpleNamespace(
         id=uuid4(),
         job_title="Test Job",
-        match_score=match_score,
         notified_at=notified_at,
     )
+
+
+def _outcome(job: Any, match_score: int | None) -> PipelineOutcome:
+    """Build a scored pipeline outcome carrying the (job, score) pair."""
+    score = ScoreResult(match_score=match_score) if match_score is not None else None
+    return PipelineOutcome(kind=KIND_SCORED, job=job, score=score)
 
 
 def _patch_html(monkeypatch: pytest.MonkeyPatch, n_links: int = 1) -> None:
@@ -147,8 +156,11 @@ def _patch_html(monkeypatch: pytest.MonkeyPatch, n_links: int = 1) -> None:
     async def _fetch(url: str) -> str:
         return html if "/jobs/?q=" in url else "job text"
 
+    # jobmaster fetches the search listing; jobmaster_process fetches and
+    # extracts each job page. Both need stubbing.
     monkeypatch.setattr(jobmaster, "fetch_html", _fetch)
-    monkeypatch.setattr(jobmaster, "extract_content", lambda h: h)
+    monkeypatch.setattr(jobmaster_process, "fetch_html", _fetch)
+    monkeypatch.setattr(jobmaster_process, "extract_content", lambda h: h)
 
 
 @pytest.mark.asyncio
@@ -159,18 +171,26 @@ class TestRunScanNotificationHook:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_html(monkeypatch)
-        job = _make_job(match_score=85)
+        job = _make_job()
+        outcome = _outcome(job, 85)
         emits: list[dict] = []
 
-        async def _fake_emit(job_id: str, job_title: str, match_score: int) -> None:
-            emits.append({"job_id": job_id, "match_score": match_score})
+        async def _fake_emit(
+            job_id: str,
+            job_title: str,
+            match_score: int,
+            job_count: int = 1,
+            *,
+            silent: bool = False,
+        ) -> None:
+            emits.append({"job_id": job_id, "match_score": match_score, "job_count": job_count})
 
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -184,6 +204,7 @@ class TestRunScanNotificationHook:
 
         assert len(emits) == 1
         assert emits[0]["match_score"] == 85
+        assert emits[0]["job_count"] == 1
         assert job.notified_at is not None
         assert session.flushed >= 1
 
@@ -191,7 +212,8 @@ class TestRunScanNotificationHook:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         _patch_html(monkeypatch)
-        job = _make_job(match_score=70)
+        job = _make_job()
+        outcome = _outcome(job, 70)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -200,9 +222,9 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -224,7 +246,8 @@ class TestRunScanNotificationHook:
 
         _patch_html(monkeypatch)
         already_stamped = datetime.now(timezone.utc)
-        job = _make_job(match_score=90, notified_at=already_stamped)
+        job = _make_job(notified_at=already_stamped)
+        outcome = _outcome(job, 90)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -233,9 +256,9 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )
@@ -254,7 +277,8 @@ class TestRunScanNotificationHook:
     ) -> None:
         """Default threshold=None must never touch notification_bus."""
         _patch_html(monkeypatch)
-        job = _make_job(match_score=100)
+        job = _make_job()
+        outcome = _outcome(job, 100)
         emits: list[dict] = []
 
         async def _fake_emit(**kw: Any) -> None:
@@ -263,9 +287,9 @@ class TestRunScanNotificationHook:
         monkeypatch.setattr(notification_bus, "emit_job_match", _fake_emit)
 
         async def _pipeline(**kw: Any) -> PipelineOutcome:
-            return PipelineOutcome(kind=KIND_SCORED, job=job)
+            return outcome
 
-        monkeypatch.setattr(jobmaster, "run_job_pipeline", _pipeline)
+        monkeypatch.setattr(jobmaster_process, "run_job_pipeline", _pipeline)
         session = _FakeSessionWithFlush(
             active_resumes=[_resume()], known_urls=[], source_count=0
         )

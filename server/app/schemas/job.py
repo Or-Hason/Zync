@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, computed_field, field_validator, model_validator
 
 
 class JobRequirements(BaseModel):
@@ -74,25 +74,61 @@ class JobScrapeRequest(BaseModel):
 
     @model_validator(mode="after")
     def _require_source(self) -> "JobScrapeRequest":
-        """Reject requests carrying neither a URL nor non-empty raw text.
+        """Reject requests carrying no content source.
 
         Returns:
             The validated request.
 
         Raises:
-            ValueError: If both ``url`` and ``raw_text`` are absent/blank
-                (surfaced by FastAPI as HTTP 422).
+            ValueError: If all three of ``url``, ``raw_text``, and
+                ``existing_job_id`` are absent/blank (surfaced as HTTP 422).
         """
-        if self.url is None and not (self.raw_text and self.raw_text.strip()):
-            raise ValueError("Either 'url' or 'raw_text' must be provided.")
+        if (
+            self.existing_job_id is None
+            and self.url is None
+            and not (self.raw_text and self.raw_text.strip())
+        ):
+            raise ValueError(
+                "Either 'url', 'raw_text', or 'existing_job_id' must be provided."
+            )
         return self
 
 
 _DEFAULT_APPLY_METHOD = "Apply via the platform's native button"
 
 
+class JobFacets(BaseModel):
+    """Autocomplete option catalogues for the Explorer's Role/Company filters.
+
+    Drawn from every job in the DB, never from the currently filtered rows —
+    otherwise selecting a value would collapse the option list to that value.
+    """
+
+    roles: list[str] = Field(default_factory=list)
+    companies: list[str] = Field(default_factory=list)
+
+
+class JobScoreItem(BaseModel):
+    """One CV's score for a job, as exposed to the UI.
+
+    Sourced from the ``job_scores`` bridging table; ``resume_name`` is the joined
+    ``resumes.version_name`` so the grid can label the CV without a second fetch.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    resume_id: UUID
+    resume_name: str | None = None
+    match_score: int
+
+
 class JobRead(BaseModel):
-    """Full job record returned by the scrape endpoint."""
+    """Full job record returned by the scrape endpoint.
+
+    ``match_score`` / ``scored_by_resume_id`` are *response* fields, not columns:
+    scores live in ``job_scores``, and the endpoint injects the one relevant to
+    the request (the CV just used to score, or the active CV on a detail fetch).
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,11 +140,11 @@ class JobRead(BaseModel):
     requirements: JobRequirements | None
     source_type: str
     source_url: str | None
-    match_score: int | None
+    match_score: int | None = None
     status: str
     is_duplicate: bool
     duplicate_chance: int | None
-    scored_by_resume_id: UUID | None
+    scored_by_resume_id: UUID | None = None
     published_at: datetime | None
     created_at: datetime
     application_options: list[str] = Field(default_factory=list)
@@ -153,3 +189,37 @@ class JobScrapeResponse(JobRead):
     missing_skills: list[str] = Field(default_factory=list)
     system_advice: str | None = None
     score_cached: bool = False
+
+
+class JobListItem(BaseModel):
+    """Lightweight job projection for the Explorer list view.
+
+    Omits heavy text fields (description, raw_content) to keep the list
+    response compact.
+
+    There is deliberately no flat ``match_score``: a job has one score *per CV*,
+    and which of them to surface is a presentation decision (active CV first, or
+    best match) that the grid makes from :attr:`scores`.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    job_title: str | None
+    company_name: str | None
+    status: str
+    source_type: str
+    created_at: datetime
+    # Every CV that has scored this job, newest score data included.
+    scores: list[JobScoreItem] = Field(default_factory=list)
+    requirements: JobRequirements | None
+    has_cover_letter: bool = False
+    # viewed_at is read from the ORM to compute is_unread but not serialised.
+    # notified_at is intentionally excluded — it belongs to the notification
+    # system and must not be repurposed as a read/unread signal.
+    viewed_at: datetime | None = Field(default=None, exclude=True)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_unread(self) -> bool:
+        return self.viewed_at is None

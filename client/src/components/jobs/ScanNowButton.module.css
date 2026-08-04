@@ -51,3 +51,54 @@
   font-size: 12px;
   color: var(--color-error);
 }
+
+/*
+ * `flex-end` keeps the button's baseline level with the threshold input even
+ * though only the input carries a caption above it.
+ */
+.controlsRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* Caption sits above the field, matching the Active CV selector beside it. */
+.thresholdWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.thresholdLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.thresholdInput {
+  width: 62px;
+  padding: 7px 8px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.thresholdInput:focus {
+  border-color: var(--color-accent);
+}
+
+.thresholdInput::-webkit-inner-spin-button,
+.thresholdInput::-webkit-outer-spin-button {
+  opacity: 1;
+}
