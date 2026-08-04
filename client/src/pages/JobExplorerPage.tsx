@@ -53,21 +53,44 @@ export function JobExplorerPage(): React.JSX.Element {
   });
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /** Detect URL filter parameters (e.g., from clicking job match notification action) and refresh table. */
+  /**
+   * Reset every filter, optionally seeding the cleared state with new ones.
+   *
+   * Single definition of "cleared" so the Clear button and the notification
+   * hand-off below cannot drift apart as filter fields are added.
+   */
+  const resetFilters = useCallback((next: JobFiltersParams = EMPTY_FILTERS): void => {
+    setFilters(next);
+    setSearchInput("");
+    // Cleared alongside the input rather than left to the debounce, so the
+    // query never runs once more with the discarded search term.
+    setDebouncedSearch("");
+  }, []);
+
+  /**
+   * Apply the filters carried by a job-match notification click.
+   *
+   * The filters **replace** whatever was set rather than merging into it:
+   * intersecting them with the user's earlier filters routinely yields an empty
+   * table, which reads as the notification having lied rather than as a filter
+   * still being on. The panel is also forced open — these two filters are the
+   * entire explanation for what the grid is showing, and a collapsed panel
+   * (its state persists across visits) hides that explanation completely.
+   */
   useEffect(() => {
     const isNewParam = searchParams.get("is_new") === "true";
     const isUnreadParam = searchParams.get("is_unread") === "true";
-    if (isNewParam || isUnreadParam) {
-      console.log("[JobExplorerPage] Notification action filter params detected in URL -> applying filters & refreshing table");
-      setFilters((prev) => ({
-        ...prev,
-        is_new: isNewParam ? true : prev.is_new,
-        is_unread: isUnreadParam ? true : prev.is_unread,
-      }));
-      void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
-      setSearchParams({}, { replace: true });
-    }
-  }, [searchParams, setSearchParams, qc]);
+    if (!isNewParam && !isUnreadParam) return;
+
+    resetFilters({
+      ...(isNewParam ? { is_new: true } : {}),
+      ...(isUnreadParam ? { is_unread: true } : {}),
+    });
+    setFiltersOpen(true);
+    void qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+    // Consume the params so a later reload does not re-clear the user's filters.
+    setSearchParams({}, { replace: true });
+  }, [searchParams, setSearchParams, qc, resetFilters]);
 
   /** Debounce free-text search so the API is not hit on every keystroke. */
   useEffect(() => {
@@ -105,10 +128,10 @@ export function JobExplorerPage(): React.JSX.Element {
     setFilters((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  // Wrapper, not `onClear={resetFilters}`: the button hands its click event to
+  // the handler, which would land in `next` and be set as the filter state.
   function handleClearFilters(): void {
-    setFilters(EMPTY_FILTERS);
-    setSearchInput("");
-    setDebouncedSearch("");
+    resetFilters();
   }
 
   const activeFilterCount = countActiveFilters(filters, searchInput);
