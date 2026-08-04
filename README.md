@@ -5,8 +5,19 @@
 ## 🚀 Vision
 Stop sending generic CVs into the void. Zync scans multiple job platforms, evaluates the exact requirements using AI, scores the match, and natively prepares tailored applications — all from a lightweight, lightning-fast desktop application.
 
+## ✨ What Works Today (v0.4)
+
+- **Job ingestion** — paste a URL or raw text, or let the background scraper pull from JobMaster on a schedule you set (1–24 h).
+- **Two-tier AI evaluation** — local Ollama extracts structured fields; Gemini scores the match 0–100 with a rationale and a matched/missing skill breakdown.
+- **Multi-CV scoring** — score the same job against several CVs. The Explorer shows the active CV's score, or the best across all of them.
+- **Job Explorer** — sortable data grid with faceted filters (role, company, score, date range, CV, source, skills, experience), free-text search, and unread / new-in-24h tracking.
+- **Cover letters on demand** — your template, tailored per job by Gemini, reviewed in a side-by-side diff before you use it.
+- **Background scanning & notifications** — native OS notifications with configurable delivery mode, a do-not-disturb window, and a score threshold. Clicking one opens the app on the matching jobs.
+- **Noise control** — keyword blacklist, TF-IDF duplicate detection, and a score cache that avoids paying for the same comparison twice.
+- **Native Windows desktop app** — packaged with Tauri as an `.exe` installer.
+
 ## 🛠️ Tech Stack
-- **Frontend / UI:** React + TypeScript (Vite), packaged as a native desktop app via **Tauri** (Rust).
+- **Frontend / UI:** React 19 + TypeScript (Vite), packaged as a native desktop app via **Tauri 2** (Rust). TanStack Query for server state, TanStack Table for the Explorer grid, CSS Modules for styling, and a central i18n dictionary (no hardcoded UI strings).
 - **Backend:** Python 3.12+ (FastAPI, fully async).
 - **Database:** PostgreSQL 18 + `asyncpg` + SQLAlchemy 2.0 (Alembic migrations, JSONB-heavy schema).
 - **AI Inference:**
@@ -32,6 +43,7 @@ Zync/
 ├── client/            # React + Tauri desktop application
 │   ├── src/           # TypeScript / React source
 │   └── src-tauri/     # Tauri (Rust) native shell
+├── .agent_logs/       # Archive of failed approaches, so dead ends aren't re-explored
 ├── DESIGN.md          # Architecture, database schema, API reference
 ├── docker-compose.yml # PostgreSQL infrastructure
 └── README.md
@@ -127,6 +139,21 @@ npm run dev
 ```bash
 npm run tauri dev
 ```
+
+---
+
+### Step 4: Build the Desktop Installer (optional)
+
+```bash
+npm run tauri build
+```
+
+Produces an NSIS installer and an MSI under `client/src-tauri/target/release/bundle/`.
+
+The packaged app has no Vite dev proxy, so it calls the backend at the absolute
+origin baked in from `client/.env.production` (`VITE_API_BASE=http://127.0.0.1:8000`).
+**The backend must already be running** when you launch the installed app — it is
+not yet bundled as a sidecar.
 
 ---
 

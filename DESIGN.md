@@ -11,7 +11,7 @@ The system follows a modern desktop-web architecture:
 - **Server Layer (FastAPI):** A Python 3.12+ async server handling scraping logic, business rules, and REST API endpoints. All I/O-bound operations are fully async (`asyncpg`, `httpx`, `aiofiles`).
 - **AI Processing Layer:**
   - `Ollama (llama3:8b)`: Local inference for lightweight tasks — job content extraction, content classification, resume parsing. Zero API cost; data stays local.
-  - `Gemini Flash (API)`: Cloud inference for complex reasoning — match scoring (0–100), rationale generation, skill gap analysis, _(Planned)_ CV tailoring, _(Planned)_ Cover Letter generation.
+  - `Gemini Flash (API)`: Cloud inference for complex reasoning — match scoring (0–100), rationale generation, skill gap analysis, cover letter tailoring, _(Planned)_ CV tailoring.
 - **Data Layer (PostgreSQL 18):** Stores jobs, resumes, and user settings. Uses `asyncpg` driven by SQLAlchemy 2.0 (async ORM) with Alembic for schema migrations. Heavily utilizes `JSONB` for dynamic metadata (requirements, score details, settings).
 
 ## 3. AI RESPONSIBILITY ARCHITECTURE
@@ -21,7 +21,7 @@ A strict boundary separates the two AI layers to keep prompts simple, costs pred
 | Concern | Ollama (local) | Gemini (cloud) |
 | :--- | :--- | :--- |
 | **Role** | Dumb extraction — pull structured fields from raw text | Smart reasoning — evaluate, compare, score |
-| **Tasks** | Job field extraction (title, company, dates, requirements, application options), resume parsing, content classification | Match scoring (0–100), rationale generation, skill gap analysis |
+| **Tasks** | Job field extraction (title, company, dates, requirements, application options), resume parsing, content classification | Match scoring (0–100), rationale generation, skill gap analysis, cover letter tailoring |
 | **Prompt style** | Short, strict, schema-bound. Outputs are sanitized and length-capped before use. | Rich context (requirements JSONB + resume structured data). Output is validated against a Pydantic schema. |
 | **Data sent** | Raw job posting or resume text (local inference — never leaves the machine) | Only `{ job_title, job_description, requirements, structured_resume_data }` — PII fields stripped before dispatch |
 | **Failure mode** | Up to 3 retry attempts on empty parse; job silently dropped (not persisted) if all retries fail | Scoring returns `null` on failure; the job is still persisted without a score |
@@ -67,15 +67,21 @@ Push notifications fire immediately after the background scraper (or manual scan
 
 - **Backend:** After scoring, the pipeline calls `notification_bus.emit_job_match(job_id, job_title, match_score)`. A `notified_at` timestamp is written to the `jobs` row; subsequent ticks skip re-notification for the same job. `GET /api/notifications/stream` is a long-lived Server-Sent Events endpoint that fans events out via per-client `asyncio.Queue`. Comment-line pings fire every 30 s to prevent proxy timeouts.
 - **Frontend:** `useNotifications` hook (mounted once in `App.tsx`) opens an `EventSource` to `/api/notifications/stream`. On `job_match` events it calls `fireNotification(jobTitle, matchScore)`.
-  - **Tauri (desktop):** `@tauri-apps/plugin-notification` `sendNotification` with a registered action type. `onAction` handler calls `win.unminimize() → win.show() → win.setFocus()` to restore a minimized window.
+  - **Tauri (Windows):** a custom `show_toast` Rust command (`src-tauri/src/notification.rs`) drives `tauri-winrt-notification`'s `Toast::on_activated`. On click, Rust restores the window (`unminimize → show → set_focus`) and emits `notification://activated`; the frontend listener then runs the pending navigation.
+
+    The bundled `tauri-plugin-notification` is **not** used for this: its Actions API is mobile-only, and no desktop code path emits the `actionPerformed` event that `onAction()` subscribes to, so a clicked toast can only dismiss. The toast is built on the main thread because it owns the STA message pump WebView2 requires, and WinRT dispatches activation through it. Unpackaged builds fall back to `Toast::POWERSHELL_APP_ID`, since Windows renders a toast only under a registered AppUserModelID.
+  - **Tauri (macOS / Linux):** falls back to `tauri-plugin-notification`. The notification appears but the click is inert — an upstream gap, tracked separately.
   - **Web:** `new Notification(title, { body })`. `onclick` calls `e.preventDefault() → notif.close() → window.focus()`. Permission is requested lazily on first event; a dismissible banner renders when permission is `"denied"`.
+
+**Click routing.** A multi-job notification navigates to `/explorer?is_new=true&is_unread=true`. The Explorer *replaces* its filter state rather than merging — intersecting with the user's existing filters routinely yields an empty grid — and force-opens the filter panel so the two active filters that explain the result are visible.
 
 ### 4.4 Action & Management
 
-1. Users view and manage scored jobs in the Dashboard.
+1. Users view and manage scored jobs in the **Job Explorer** — a sortable data grid with faceted filters (role, company, score, date range, CV, source, skills, experience) plus free-text search. Unread and new-in-24h rows are visually marked; opening a job stamps `viewed_at`.
 2. The active resume can be switched at any time; the frontend performs a read-only cache check to show the cached score for the selected resume without re-scoring.
 3. Each job card displays a **View Original Job** button (when `source_url` is present), `recommended_apply_method`, and a **Ways to Apply** section (when `application_options.length > 1`).
-4. _(Planned)_ One-click tailored CV generation and semi-auto application submission.
+4. **Cover letters** are generated on demand per `(job, CV)` pair from a user-supplied template, tailored by Gemini, and reviewed in a side-by-side diff editor before use.
+5. _(Planned)_ One-click tailored CV generation and semi-auto application submission.
 
 ## 5. DATABASE SCHEMA (PostgreSQL 18)
 
@@ -99,8 +105,9 @@ Push notifications fire immediately after the background scraper (or manual scan
 | `is_duplicate` | BOOLEAN | True when near-identical content was already imported. |
 | `duplicate_chance` | INTEGER | Nullable. 0–100 duplicate probability from TF-IDF similarity. |
 | `notified_at` | TIMESTAMPTZ | Nullable. Set when a push notification was emitted; prevents duplicate notifications on subsequent scraper ticks. |
+| `viewed_at` | TIMESTAMPTZ | Nullable. Stamped when the user first opens the job. `NULL` drives the Explorer's *Unread* filter and row highlight. |
 | `published_at` | TIMESTAMPTZ | Nullable. Job posting date extracted from content. |
-| `created_at` | TIMESTAMPTZ | DB insertion time. |
+| `created_at` | TIMESTAMPTZ | DB insertion time. Also drives the *New (24h)* filter. |
 
 ### Table: `job_scores`
 
@@ -133,6 +140,22 @@ Bridging table between `jobs` and `resumes`: **one row per (job, CV) pair**. Sco
 | `is_active` | BOOLEAN | At most one resume is active at a time (enforced in application logic, not by DB constraint). |
 | `created_at` | TIMESTAMPTZ | Upload time. |
 
+### Table: `cover_letters`
+
+One row per `(job, CV)` pair, mirroring `job_scores`. Regenerating for the same pair is an UPSERT on the unique constraint.
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | UUID | Primary key. |
+| `job_id` | UUID | FK → `jobs.id` (CASCADE on delete). |
+| `resume_id` | UUID | FK → `resumes.id` (CASCADE on delete). |
+| `original_template_text` | TEXT | Nullable. The user's template as it was at generation time, retained so the diff view stays meaningful after the stored template changes. |
+| `generated_text` | TEXT | The tailored letter. User edits overwrite this. |
+| `gemini_summary` | TEXT | Nullable. Short explanation of what was changed and why. |
+| `created_at` | TIMESTAMPTZ | Generation time. |
+
+`UNIQUE (job_id, resume_id)`.
+
 ### Table: `settings`
 
 Singleton row. A `CHECK (id = 1)` constraint ensures only one row ever exists; all reads and writes use upsert.
@@ -140,9 +163,18 @@ Singleton row. A `CHECK (id = 1)` constraint ensures only one row ever exists; a
 | Column | Type | Description |
 | :--- | :--- | :--- |
 | `id` | SMALLINT | Primary key, always `1`. |
-| `data` | JSONB | All user settings: `{ blacklist: string[], blacklist_bypass_preference: "ask" \| "always" \| "never", auto_scan_enabled: bool, scan_frequency_hours: 1\|3\|6\|12\|24, notification_score_threshold: 0–100, last_scan_at: ISO timestamp \| null, scan_in_progress: bool }`. |
+| `data` | JSONB | All user settings, grouped by concern. Each group is owned by a dedicated store under `app/services/settings/`. |
 
-### Table: `applications` _(planned)_
+| Group | Keys |
+| :--- | :--- |
+| Blacklist | `blacklist: string[]`, `blacklist_bypass_preference: "ask" \| "always" \| "never"` |
+| Auto-scan | `auto_scan_enabled: bool`, `scan_frequency_hours: 1\|3\|6\|12\|24`, `notification_score_threshold: 0–100`, `last_scan_at: ISO \| null`, `next_scheduled_scan_at: ISO \| null`, `scan_in_progress: bool` |
+| Notifications | `notification_mode: "A"\|"B"\|"C"`, `daily_notify_time: "HH:MM" \| null`, `notify_if_zero: bool`, `dnd_start` / `dnd_end: "HH:MM" \| null`, `immediate_job_threshold: 0–100 \| null`, `immediate_jobs_found_since_reset: int` |
+| Cover letters | `letter_template_text: string \| null`, `letter_template_filename: string \| null` |
+
+### Table: `applications` _(schema only — no feature yet)_
+
+Created in migration `0001` and mapped by `app/models/application.py`, but no endpoint reads or writes it. Reserved for application-lifecycle tracking.
 
 | Column | Type | Description |
 | :--- | :--- | :--- |
@@ -162,7 +194,23 @@ All routes are prefixed with `/api`.
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `POST` | `/jobs/scrape` | Run the full ingestion + scoring pipeline for one job (URL or raw text). Returns HTTP 201 on fresh score, 200 on cache hit, 422 on blacklist/classification, 400 on no active resume. |
+| `GET` | `/jobs` | Explorer list. Filters: `q`, `date_from`, `date_to`, `min_score`, `role`, `company`, `cv_id`, `source_type`, `has_cover_letter`, `is_new`, `is_unread`, `skills[]`, `min_experience`, `status`. Each row carries a `scores[]` array (one entry per CV that scored it). |
+| `GET` | `/jobs/{job_id}` | Full job detail. |
 | `GET` | `/jobs/{job_id}/cached-score` | Read-only cache check for a `(job, resume)` pair — no DB writes, no Gemini calls. Query param: `resume_id`. |
+| `GET` | `/jobs/skills` | Distinct skill vocabulary across all jobs, for the skills filter. |
+| `GET` | `/jobs/facets` | Distinct role and company lists for the Explorer autocompletes. Derived from every job in the DB, not the filtered page. |
+| `PATCH` | `/jobs/{job_id}/read` | Stamp `viewed_at`. |
+| `PATCH` | `/jobs/read-all` | Stamp `viewed_at` on every unread job. |
+
+**Route order matters:** `/jobs/skills`, `/jobs/facets`, and `/jobs/read-all` are registered before `/jobs/{job_id}`, otherwise the wildcard captures them as IDs.
+
+### Cover Letters
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/jobs/{job_id}/cover-letter` | Fetch the letter for a `(job, CV)` pair. HTTP 404 when none exists. Query param: `resume_id`. |
+| `POST` | `/jobs/{job_id}/cover-letter` | Generate (or regenerate) a tailored letter from the stored template via Gemini. |
+| `PATCH` | `/jobs/{job_id}/cover-letter` | Persist user edits to `generated_text`. |
 
 ### Resumes
 
@@ -186,13 +234,20 @@ All routes are prefixed with `/api`.
 | `PUT` | `/settings/blacklist-bypass-preference` | Persist the bypass preference. |
 | `GET` | `/settings/scan` | Return auto-scan config (`auto_scan_enabled`, `scan_frequency_hours`, `notification_score_threshold`, `last_scan_at`, `scan_in_progress`). |
 | `PUT` | `/settings/scan` | Persist auto-scan config. HTTP 400 when enabling without an active resume. |
-| `POST` | `/settings/scan/trigger` | Trigger an immediate manual scan (background task). HTTP 409 when a scan is already running; 400 when no active resume. Returns `{ status: "started" }`. |
+| `POST` | `/settings/scan/trigger` | Trigger an immediate manual scan (background task). HTTP 409 when a scan is already running; 400 when no active resume. Optional body `{ manual_threshold }` overrides the notification score threshold for this run. Returns `{ status: "started" }`. |
+| `GET` | `/settings/notifications` | Return notification delivery config (mode, daily digest time, DND window, immediate threshold). |
+| `PUT` | `/settings/notifications` | Persist notification delivery config. |
+| `GET` | `/settings/letter-template` | Return the stored cover-letter template and its original filename. |
+| `PUT` | `/settings/letter-template` | Upload/replace the template from a file. |
+| `PATCH` | `/settings/letter-template` | Update the template text inline. |
+| `DELETE` | `/settings/letter-template` | Remove the stored template. |
 
 ### Notifications
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/notifications/stream` | Long-lived SSE stream. Emits `job_match` events (`job_id`, `job_title`, `match_score`); keepalive comment-pings every 30 s. |
+| `GET` | `/notifications/stream` | Long-lived SSE stream. Emits `job_match` events (`job_id`, `job_title`, `match_score`, `job_count`, `silent`); keepalive comment-pings every 30 s. |
+| `POST` | `/notifications/mock-backend-scan` | Development aid: emits a synthetic `job_match` event so the delivery path can be exercised without running a real scan. |
 
 ### Health
 
