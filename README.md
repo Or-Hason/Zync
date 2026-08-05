@@ -5,6 +5,14 @@
 ## 🚀 Vision
 Stop sending generic CVs into the void. Zync scans multiple job platforms, evaluates the exact requirements using AI, scores the match, and natively prepares tailored applications — all from a lightweight, lightning-fast desktop application.
 
+## 🏗️ Architecture at a Glance
+
+![Zync architecture — Tauri desktop shell, async FastAPI server, eight-gate evaluation pipeline, split local/cloud AI layer, PostgreSQL](docs/architecture.svg)
+
+The evaluation pipeline is ordered deliberately: gates 01–05 are free and run on-device,
+so the one paid model call only ever sees postings that survived all five. Full detail —
+schema, endpoints, workflows — lives in [DESIGN.md](DESIGN.md).
+
 ## ✨ What Works Today (v0.4)
 
 - **Job ingestion** — paste a URL or raw text, or let the background scraper pull from JobMaster on a schedule you set (1–24 h).
@@ -43,6 +51,7 @@ Zync/
 ├── client/            # React + Tauri desktop application
 │   ├── src/           # TypeScript / React source
 │   └── src-tauri/     # Tauri (Rust) native shell
+├── docs/              # Diagrams and other rendered documentation assets
 ├── .agent_logs/       # Archive of failed approaches, so dead ends aren't re-explored
 ├── DESIGN.md          # Architecture, database schema, API reference
 ├── docker-compose.yml # PostgreSQL infrastructure
