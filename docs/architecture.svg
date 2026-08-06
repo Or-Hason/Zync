@@ -1,0 +1,161 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" role="img" aria-labelledby="t d">
+  <title id="t">Zync system architecture</title>
+  <desc id="d">Five layers: a Tauri 2 React desktop app, a FastAPI async API with a scheduler and scraper, an eight-gate evaluation pipeline in which only one gate calls a paid cloud model, a split AI layer of local Ollama and cloud Gemini Flash, and a PostgreSQL 18 data layer.</desc>
+
+  <defs>
+    <style>
+      .f    { font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+      .band { font-size: 12px; font-weight: 700; letter-spacing: 1.6px; fill: #7C77FF; }
+      .box  { font-size: 15px; font-weight: 600; fill: #E9E9F2; }
+      .sub  { font-size: 11.5px; font-weight: 400; fill: #85859C; }
+      .flow { font-size: 11.5px; font-weight: 600; letter-spacing: .8px; fill: #6E6E88; }
+      .num  { font-size: 10.5px; font-weight: 700; fill: #5B5B77; }
+      .step { font-size: 12.5px; font-weight: 600; fill: #E3E3EE; }
+      .tiny { font-size: 10.5px; font-weight: 400; fill: #7C7C94; }
+    </style>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#3E3E58"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="#0A0A0F"/>
+
+  <!-- ── header ─────────────────────────────────────────────── -->
+  <text class="f" x="64" y="62" font-size="34" font-weight="700" fill="#F4F4FA">Zync</text>
+  <text class="f" x="146" y="62" font-size="21" font-weight="400" fill="#8E8EA6">— AI-driven job hunting, end to end</text>
+  <text class="f" x="64" y="92" font-size="14" fill="#6E6E88">Local-first AI pipeline · React 19 + Tauri 2 · FastAPI (async) · PostgreSQL 18</text>
+  <rect x="1370" y="40" width="166" height="30" rx="15" fill="#191926" stroke="#2E2E46"/>
+  <text class="f" x="1453" y="60" font-size="12.5" font-weight="600" fill="#9C97FF" text-anchor="middle">v0.4 · Windows desktop</text>
+  <line x1="64" y1="116" x2="1536" y2="116" stroke="#1E1E2C"/>
+
+  <!-- ── 1. presentation ────────────────────────────────────── -->
+  <rect x="64" y="142" width="1472" height="118" rx="14" fill="#12121B" stroke="#26263A"/>
+  <text class="f band" x="86" y="170">PRESENTATION — TAURI 2 NATIVE SHELL (RUST) + REACT 19 / TYPESCRIPT</text>
+
+  <rect x="86" y="184" width="214" height="56" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="193" y="208" text-anchor="middle">Dashboard</text>
+  <text class="f sub"  x="193" y="226" text-anchor="middle">live scan status</text>
+
+  <rect x="318" y="184" width="214" height="56" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="425" y="208" text-anchor="middle">Job Explorer</text>
+  <text class="f sub"  x="425" y="226" text-anchor="middle">TanStack grid · 8 facets</text>
+
+  <rect x="550" y="184" width="214" height="56" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="657" y="208" text-anchor="middle">Job Detail</text>
+  <text class="f sub"  x="657" y="226" text-anchor="middle">score · gaps · rationale</text>
+
+  <rect x="782" y="184" width="214" height="56" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="889" y="208" text-anchor="middle">Cover Letters</text>
+  <text class="f sub"  x="889" y="226" text-anchor="middle">side-by-side diff</text>
+
+  <rect x="1014" y="184" width="214" height="56" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="1121" y="208" text-anchor="middle">Resumes &amp; Settings</text>
+  <text class="f sub"  x="1121" y="226" text-anchor="middle">multi-CV · JSONB prefs</text>
+
+  <rect x="1246" y="184" width="268" height="56" rx="9" fill="#1B1832" stroke="#4B45A8"/>
+  <text class="f box"  x="1380" y="208" text-anchor="middle" fill="#CFCBFF">Native toast bridge</text>
+  <text class="f sub"  x="1380" y="226" text-anchor="middle" fill="#9891D8">Rust WinRT · click → deep-link</text>
+
+  <!-- ── flow 1 → 2 ─────────────────────────────────────────── -->
+  <line x1="800" y1="262" x2="800" y2="300" stroke="#3E3E58" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="f flow" x="816" y="287">HTTP · loopback only (127.0.0.1)</text>
+  <line x1="1380" y1="300" x2="1380" y2="262" stroke="#3E3E58" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="f flow" x="1364" y="287" text-anchor="end">SSE push</text>
+
+  <!-- ── 2. api ─────────────────────────────────────────────── -->
+  <rect x="64" y="306" width="1472" height="96" rx="14" fill="#12121B" stroke="#26263A"/>
+  <text class="f band" x="86" y="334">SERVER — FASTAPI · PYTHON 3.12 · FULLY ASYNC (httpx · asyncpg · aiofiles)</text>
+
+  <rect x="86" y="348" width="343" height="40" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box" x="257" y="373" text-anchor="middle">REST routers</text>
+
+  <rect x="447" y="348" width="343" height="40" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box" x="618" y="373" text-anchor="middle">SSE notification stream</text>
+
+  <rect x="808" y="348" width="343" height="40" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box" x="979" y="373" text-anchor="middle">APScheduler · 5-min tick</text>
+
+  <rect x="1169" y="348" width="345" height="40" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box" x="1341" y="373" text-anchor="middle">JobMaster scraper · BS4</text>
+
+  <!-- ── flow 2 → 3 ─────────────────────────────────────────── -->
+  <line x1="800" y1="404" x2="800" y2="442" stroke="#3E3E58" stroke-width="1.5" marker-end="url(#a)"/>
+  <text class="f flow" x="816" y="429">raw posting text</text>
+
+  <!-- ── 3. pipeline ────────────────────────────────────────── -->
+  <rect x="64" y="448" width="1472" height="170" rx="14" fill="#12121B" stroke="#26263A"/>
+  <text class="f band" x="86" y="476">EVALUATION PIPELINE — ORDERED SO A PAID MODEL CALL IS THE LAST RESORT</text>
+
+  <g>
+    <rect x="86" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="98"  y="510">01</text>
+    <text class="f step" x="169" y="528" text-anchor="middle">Classify</text>
+    <text class="f tiny" x="169" y="546" text-anchor="middle">Ollama · valid job?</text>
+
+    <rect x="267" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="279" y="510">02</text>
+    <text class="f step" x="350" y="528" text-anchor="middle">Deduplicate</text>
+    <text class="f tiny" x="350" y="546" text-anchor="middle">TF-IDF · last 500</text>
+
+    <rect x="448" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="460" y="510">03</text>
+    <text class="f step" x="531" y="528" text-anchor="middle">Score cache</text>
+    <text class="f tiny" x="531" y="546" text-anchor="middle">cosine &gt; 0.90 → reuse</text>
+
+    <rect x="629" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="641" y="510">04</text>
+    <text class="f step" x="712" y="528" text-anchor="middle">Blacklist</text>
+    <text class="f tiny" x="712" y="546" text-anchor="middle">keyword auto-reject</text>
+
+    <rect x="810" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="822" y="510">05</text>
+    <text class="f step" x="893" y="528" text-anchor="middle">CV guard</text>
+    <text class="f tiny" x="893" y="546" text-anchor="middle">active resume set?</text>
+
+    <rect x="991" y="492" width="166" height="72" rx="9" fill="#1B1832" stroke="#5B54C8"/>
+    <text class="f num"  x="1003" y="510" fill="#8079E0">06</text>
+    <text class="f step" x="1074" y="528" text-anchor="middle" fill="#CFCBFF">Match score</text>
+    <text class="f tiny" x="1074" y="546" text-anchor="middle" fill="#9891D8">Gemini · 0–100 + gaps</text>
+
+    <rect x="1172" y="492" width="166" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="1184" y="510">07</text>
+    <text class="f step" x="1255" y="528" text-anchor="middle">Persist</text>
+    <text class="f tiny" x="1255" y="546" text-anchor="middle">&lt; 40 → auto-reject</text>
+
+    <rect x="1353" y="492" width="161" height="72" rx="9" fill="#191926" stroke="#2C2C42"/>
+    <text class="f num"  x="1365" y="510">08</text>
+    <text class="f step" x="1433" y="528" text-anchor="middle">Notify</text>
+    <text class="f tiny" x="1433" y="546" text-anchor="middle">above threshold only</text>
+  </g>
+
+  <line x1="86" y1="584" x2="976" y2="584" stroke="#2C2C42" stroke-dasharray="3 4"/>
+  <text class="f tiny" x="86" y="602" fill="#85859C">Gates 01–05 are free and run on-device — Gemini only ever sees what survives all five.</text>
+  <text class="f tiny" x="1514" y="602" text-anchor="end" fill="#9891D8">◆ the single paid call</text>
+
+  <!-- ── flow 3 → 4 ─────────────────────────────────────────── -->
+  <line x1="800" y1="620" x2="800" y2="652" stroke="#3E3E58" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- ── 4. ai layer ────────────────────────────────────────── -->
+  <rect x="64" y="658" width="1472" height="112" rx="14" fill="#12121B" stroke="#26263A"/>
+  <text class="f band" x="86" y="686">AI LAYER — STRICT SPLIT: LOCAL EXTRACTS, CLOUD REASONS</text>
+
+  <rect x="86" y="700" width="464" height="52" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="106" y="722">Ollama · llama3:8b <tspan fill="#6E6E88" font-size="12">— LOCAL</tspan></text>
+  <text class="f sub"  x="106" y="740">field extraction · resume parsing · classification — text never leaves the machine</text>
+
+  <rect x="568" y="700" width="464" height="52" rx="9" fill="#191926" stroke="#2C2C42"/>
+  <text class="f box"  x="588" y="722">scikit-learn · TF-IDF <tspan fill="#6E6E88" font-size="12">— LOCAL</tspan></text>
+  <text class="f sub"  x="588" y="740">cosine similarity powering duplicate detection and the score cache</text>
+
+  <rect x="1050" y="700" width="464" height="52" rx="9" fill="#1B1832" stroke="#4B45A8" stroke-dasharray="5 3"/>
+  <text class="f box"  x="1070" y="722" fill="#CFCBFF">Gemini Flash <tspan fill="#8079E0" font-size="12">— CLOUD, PII-STRIPPED</tspan></text>
+  <text class="f sub"  x="1070" y="740" fill="#9891D8">scoring · skill gaps · cover letters — model rotation + exponential back-off</text>
+
+  <!-- ── flow 4 → 5 ─────────────────────────────────────────── -->
+  <line x1="800" y1="772" x2="800" y2="800" stroke="#3E3E58" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- ── 5. data ────────────────────────────────────────────── -->
+  <rect x="64" y="806" width="1472" height="74" rx="14" fill="#12121B" stroke="#26263A"/>
+  <text class="f band" x="86" y="834">DATA — POSTGRESQL 18 · SQLALCHEMY 2.0 ASYNC · ALEMBIC MIGRATIONS</text>
+  <text class="f sub"  x="86" y="860" font-size="13">jobs · job_scores · resumes · cover_letters · settings · applications — JSONB-heavy for requirements, score detail and user prefs</text>
+</svg>
